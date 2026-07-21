@@ -147,6 +147,7 @@ async def process_query(request: QueryRequest):
             return
 
         # Step 5: Dynamic LLM Generation
+       # Step 5: Dynamic LLM Generation
         yield f"data: {json.dumps({'event': 'CONTRADICTION_FILTER', 'data': 'Context verified. Synthesizing natural answer via Gemini AI...'})}\n\n"
         await asyncio.sleep(0.1)
 
@@ -162,7 +163,10 @@ async def process_query(request: QueryRequest):
                     "Direct Answer:"
                 )
 
-                response = await client.aio.models.generate_content(model='gemini-2.5-flash',contents=prompt,)
+                response = await client.aio.models.generate_content(
+                    model='gemini-2.5-flash',
+                    contents=prompt,
+                )
                 
                 if response and response.text:
                     final_answer = response.text.strip()
@@ -176,8 +180,6 @@ async def process_query(request: QueryRequest):
             final_answer = f"⚠️ GEMINI_API_KEY missing in Render environment variables. Raw context: {retrieved_context}"
 
         yield f"data: {json.dumps({'event': 'FINAL_RESPONSE', 'data': final_answer})}\n\n"
-
-    return StreamingResponse(generate_stream(), media_type="text/event-stream")
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
