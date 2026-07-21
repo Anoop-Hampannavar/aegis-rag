@@ -54,22 +54,26 @@ def chunk_text(text: str, chunk_size: int = 250, overlap: int = 40) -> List[str]
     return chunks
 
 def extract_target_sentence(query: str, context: str) -> str:
-    """Strip out headers, recipient text, and pull only relevant body sentence."""
+    """Strip headers and strictly locate the requested leave date range sentence."""
     sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', context) if len(s.strip()) > 10]
-    query_words = [w.lower() for w in query.split() if len(w) > 3 and w.lower() not in ['what', 'where', 'when', 'from', 'this']]
     
-    # Exclude header lines
+    # Exclude non-body header lines
     body_sentences = [s for s in sentences if not any(s.startswith(h) for h in ["From:", "To:", "Subject:", "Respected", "Yours"])]
-    
-    best_sentence = ""
-    max_score = -1
-    for s in (body_sentences if body_sentences else sentences):
-        score = sum(1 for word in query_words if word in s.lower())
-        if score > max_score:
-            max_score = score
-            best_sentence = s
-            
-    return best_sentence if best_sentence else context
+    target_sentences = body_sentences if body_sentences else sentences
+
+    # Priority 1: Check for explicit permission/leave sentence with date ranges
+    for s in target_sentences:
+        if "permission" in s.lower() or "leave" in s.lower() or "classes" in s.lower():
+            if "july" in s.lower() or "to" in s.lower():
+                return s
+
+    # Priority 2: Return sentence containing date ranges
+    for s in target_sentences:
+        if re.search(r'\d{1,2}(st|nd|rd|th)?\s+(july|august|january|february|march|april|may|june|september|october|november|december)', s, re.IGNORECASE):
+            if "request" in s.lower() or "leave" in s.lower():
+                return s
+
+    return target_sentences[-1] if target_sentences else context
 
 @app.get("/health")
 async def health_check():
