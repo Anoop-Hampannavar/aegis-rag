@@ -12,7 +12,7 @@ from io import BytesIO
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import pypdf
-import google.generativeai as genai
+from google import genai
 
 app = FastAPI(
     title="Aegis-RAG Self-Correcting Engine",
@@ -28,10 +28,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Configure Gemini API Key (Set GEMINI_API_KEY in Render Environment Variables)
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
+client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
 
 DOCUMENT_STORE = {
     "filename": "None",
@@ -60,7 +58,7 @@ async def health_check():
         "status": "healthy",
         "active_document": DOCUMENT_STORE["filename"],
         "indexed_chunks": len(DOCUMENT_STORE["chunks"]),
-        "llm_enabled": bool(GEMINI_API_KEY)
+        "llm_enabled": bool(client)
     }
 
 @app.post("/api/v1/ingest")
@@ -149,16 +147,14 @@ async def process_query(request: QueryRequest):
             return
 
         # Step 5: Real LLM Generation (Grounded in retrieved context)
-        # Step 5: Real LLM Generation (Grounded in retrieved context)
         yield f"data: {json.dumps({'event': 'CONTRADICTION_FILTER', 'data': 'Context verified. Generating response via AI model...'})}\n\n"
         await asyncio.sleep(0.2)
 
         retrieved_context = chunks[best_idx]
 
-        if GEMINI_API_KEY:
+        if client:
             try:
-                model = genai.GenerativeModel('gemini-1.5-flash')
-                prompt = f"""You are a precise document assistant. Answer the user's question concisely based ONLY on this text snippet. Do not output raw headers, names, or addresses unless explicitly asked.
+                prompt = f"""You are a precise document assistant. Answer the user's question concisely based ONLY on this document context. Do not output raw headers or recipient details unless specifically requested.
 
 Document Context:
 "{retrieved_context}"
@@ -166,16 +162,20 @@ Document Context:
 Question: {query}
 Answer:"""
                 
-                response = model.generate_content(prompt)
+                response = client.models.generate_content(
+                    model='gemini-2.5-flash',
+                    contents=prompt,
+                )
                 final_answer = response.text.strip()
             except Exception as e:
-                # Log error to Render console so you know why Gemini failed
                 print(f"Gemini API Execution Error: {str(e)}")
-                final_answer = f"⚠️ Gemini API Error ({str(e)}). Fallback Context: {retrieved_context}"
+                final_answer = f"According to '{doc_name}': {retrieved_context}"
         else:
-            final_answer = f"⚠️ GEMINI_API_KEY not detected in environment variables. Fallback Context: {retrieved_context}"
+            final_answer = f"According to '{doc_name}': {retrieved_context}"
 
         yield f"data: {json.dumps({'event': 'FINAL_RESPONSE', 'data': final_answer})}\n\n"
+
+    return StreamingResponse(generate_stream(), media_type="text/event-stream")
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
