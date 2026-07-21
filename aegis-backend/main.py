@@ -149,6 +149,7 @@ async def process_query(request: QueryRequest):
             return
 
         # Step 5: Real LLM Generation (Grounded in retrieved context)
+        # Step 5: Real LLM Generation (Grounded in retrieved context)
         yield f"data: {json.dumps({'event': 'CONTRADICTION_FILTER', 'data': 'Context verified. Generating response via AI model...'})}\n\n"
         await asyncio.sleep(0.2)
 
@@ -157,26 +158,24 @@ async def process_query(request: QueryRequest):
         if GEMINI_API_KEY:
             try:
                 model = genai.GenerativeModel('gemini-1.5-flash')
-                prompt = f"""You are a precise document assistant. Answer the user question based ONLY on the following document snippet. 
-Be concise, natural, direct, and complete. Do not add outside speculation.
+                prompt = f"""You are a precise document assistant. Answer the user's question concisely based ONLY on this text snippet. Do not output raw headers, names, or addresses unless explicitly asked.
 
-Document Snippet:
+Document Context:
 "{retrieved_context}"
 
 Question: {query}
 Answer:"""
                 
                 response = model.generate_content(prompt)
-                llm_answer = response.text.strip()
-                final_answer = f"{llm_answer}"
+                final_answer = response.text.strip()
             except Exception as e:
-                final_answer = f"According to '{doc_name}': {retrieved_context}"
+                # Log error to Render console so you know why Gemini failed
+                print(f"Gemini API Execution Error: {str(e)}")
+                final_answer = f"⚠️ Gemini API Error ({str(e)}). Fallback Context: {retrieved_context}"
         else:
-            final_answer = f"According to '{doc_name}': {retrieved_context}"
+            final_answer = f"⚠️ GEMINI_API_KEY not detected in environment variables. Fallback Context: {retrieved_context}"
 
         yield f"data: {json.dumps({'event': 'FINAL_RESPONSE', 'data': final_answer})}\n\n"
-
-    return StreamingResponse(generate_stream(), media_type="text/event-stream")
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
