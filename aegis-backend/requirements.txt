@@ -5,7 +5,6 @@ python-multipart
 pypdf
 scikit-learn
 numpy
-google-genai
-httpx
 groq
-pillow
+Pillow
+pytesseract
