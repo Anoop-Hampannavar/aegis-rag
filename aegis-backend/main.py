@@ -113,16 +113,16 @@ async def process_query(request: QueryRequest):
 
         # Step 1: Initialize Pipeline
         yield f"data: {json.dumps({'event': 'STATE_INIT', 'data': f'Query received: {query}'})}\n\n"
-        await asyncio.sleep(0.2)
+        await asyncio.sleep(0.1)
 
         if not chunks or DOCUMENT_STORE["vectorizer"] is None:
-            yield f"data: {json.dumps({'event': 'SUFFICIENCY_CHECK', 'data': 'REJECTED: No document indexed.'})}\n\n"
-            yield f"data: {json.dumps({'event': 'FINAL_RESPONSE', 'data': '⚠️ LOW_CONFIDENCE_FLAG: Please upload a document first.'})}\n\n"
+            yield f"data: {json.dumps({'event': 'SUFFICIENCY_CHECK', 'data': 'REJECTED: No active document in memory.'})}\n\n"
+            yield f"data: {json.dumps({'event': 'FINAL_RESPONSE', 'data': '⚠️ LOW_CONFIDENCE_FLAG: Document memory reset due to inactivity. Please re-upload your PDF.'})}\n\n"
             return
 
         # Step 2: Vector Search
         yield f"data: {json.dumps({'event': 'VECTOR_SEARCH', 'data': f'Searching vector index across {len(chunks)} chunks in {doc_name}...'})}\n\n"
-        await asyncio.sleep(0.3)
+        await asyncio.sleep(0.2)
 
         query_vec = DOCUMENT_STORE["vectorizer"].transform([query])
         similarities = cosine_similarity(query_vec, DOCUMENT_STORE["tfidf_matrix"])[0]
@@ -134,38 +134,37 @@ async def process_query(request: QueryRequest):
         # Step 3: Sufficiency Check
         suff_data = f"Sufficiency Score tau={similarity_score} (Required threshold: {tau})"
         yield f"data: {json.dumps({'event': 'SUFFICIENCY_CHECK', 'data': suff_data})}\n\n"
-        await asyncio.sleep(0.3)
+        await asyncio.sleep(0.2)
 
         # Step 4: Self-Correction Gate
         if similarity_score < tau:
             yield f"data: {json.dumps({'event': 'RE_QUERY_ATTEMPT', 'data': f'Score {similarity_score} < {tau}. Triggering refusal gate...'})}\n\n"
-            await asyncio.sleep(0.3)
+            await asyncio.sleep(0.2)
             yield f"data: {json.dumps({'event': 'CONTRADICTION_FILTER', 'data': 'Self-correction active: Generation halted to avoid hallucination.'})}\n\n"
             
             low_conf_msg = f"⚠️ LOW_CONFIDENCE_FLAG: The document '{doc_name}' does not contain context regarding '{query}'."
             yield f"data: {json.dumps({'event': 'FINAL_RESPONSE', 'data': low_conf_msg})}\n\n"
             return
 
-        # Step 5: Real LLM Generation (Grounded in retrieved context)
-       # Step 5: Real LLM Generation (Grounded in retrieved context)
-        yield f"data: {json.dumps({'event': 'CONTRADICTION_FILTER', 'data': 'Context verified. Synthesizing response via Gemini AI...'})}\n\n"
-        await asyncio.sleep(0.2)
+        # Step 5: Async LLM Generation
+        yield f"data: {json.dumps({'event': 'CONTRADICTION_FILTER', 'data': 'Context verified. Synthesizing answer via Gemini...'})}\n\n"
+        await asyncio.sleep(0.1)
 
         retrieved_context = chunks[best_idx]
 
         if client and GEMINI_API_KEY:
             try:
                 prompt = (
-                    "You are an AI document assistant. Answer the user's question directly and concisely "
-                    "in 1-2 natural sentences based ONLY on the provided context. Do NOT repeat letter headers, "
-                    "addresses, or salutations unless explicitly requested.\n\n"
+                    "You are a precise document assistant. Answer the user's question directly and concisely "
+                    "in 1-2 natural sentences based ONLY on the provided context. Do NOT repeat letter headers or addresses.\n\n"
                     f"Context: \"{retrieved_context}\"\n\n"
                     f"Question: {query}\n\n"
                     "Direct Answer:"
                 )
 
-                response = client.models.generate_content(
-                    model='gemini-1.5-flash',
+                # Async API call using client.aio
+                response = await client.aio.models.generate_content(
+                    model='gemini-2.5-flash',
                     contents=prompt,
                 )
                 
@@ -175,13 +174,14 @@ async def process_query(request: QueryRequest):
                     final_answer = f"According to '{doc_name}': {retrieved_context}"
 
             except Exception as err:
-                print(f"[Aegis Error] Gemini Generation failed: {err}")
-                final_answer = f"⚠️ Gemini Execution Error ({str(err)}). Raw context: {retrieved_context}"
+                print(f"[Aegis Error] Gemini async call failed: {err}")
+                final_answer = f"According to '{doc_name}': {retrieved_context}"
         else:
-            print("[Aegis Notice] GEMINI_API_KEY is not configured in environment variables.")
-            final_answer = f"⚠️ GEMINI_API_KEY Missing in Render Environment. Raw context: {retrieved_context}"
+            final_answer = f"According to '{doc_name}': {retrieved_context}"
 
         yield f"data: {json.dumps({'event': 'FINAL_RESPONSE', 'data': final_answer})}\n\n"
+
+    return StreamingResponse(generate_stream(), media_type="text/event-stream")
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
