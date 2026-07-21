@@ -1,6 +1,5 @@
 import os
 import io
-import re
 import json
 import asyncio
 from typing import Optional, List
@@ -10,14 +9,14 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from io import BytesIO
 
-# Lightweight Scikit-Learn Vector Search Engine (Uses ~60MB RAM)
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import pypdf
+import google.generativeai as genai
 
 app = FastAPI(
     title="Aegis-RAG Self-Correcting Engine",
-    description="Enterprise Self-Correcting RAG Architecture with Evaluation Harness",
+    description="Enterprise Self-Correcting RAG Architecture",
     version="2.0.0"
 )
 
@@ -29,19 +28,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# In-Memory Vector Store Representation
+# Configure Gemini API Key (Set GEMINI_API_KEY in Render Environment Variables)
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
+
 DOCUMENT_STORE = {
     "filename": "None",
     "chunks": [],
     "vectorizer": None,
-    "tfidf_matrix": None
+    "tfidf_matrix": None,
+    "full_text": ""
 }
 
 class QueryRequest(BaseModel):
     query: str
     tau_threshold: Optional[float] = 0.78
 
-def chunk_text(text: str, chunk_size: int = 200, overlap: int = 30) -> List[str]:
+def chunk_text(text: str, chunk_size: int = 250, overlap: int = 40) -> List[str]:
     words = text.split()
     chunks = []
     for i in range(0, len(words), chunk_size - overlap):
@@ -56,8 +60,7 @@ async def health_check():
         "status": "healthy",
         "active_document": DOCUMENT_STORE["filename"],
         "indexed_chunks": len(DOCUMENT_STORE["chunks"]),
-        "vector_store": "TF-IDF Vector Index Active",
-        "ram_usage": "Optimal (<150MB)"
+        "llm_enabled": bool(GEMINI_API_KEY)
     }
 
 @app.post("/api/v1/ingest")
@@ -66,7 +69,6 @@ async def ingest_document(file: UploadFile = File(...)):
         content = await file.read()
         extracted_text = ""
 
-        # Process PDF
         if file.filename.lower().endswith(".pdf"):
             try:
                 pdf_reader = pypdf.PdfReader(BytesIO(content))
@@ -83,10 +85,7 @@ async def ingest_document(file: UploadFile = File(...)):
         if not cleaned_text:
             raise HTTPException(status_code=400, detail="Could not extract readable text from document.")
 
-        # Chunk Document
         chunks = chunk_text(cleaned_text)
-        
-        # Fit Vectorizer across chunks
         vectorizer = TfidfVectorizer().fit(chunks)
         tfidf_matrix = vectorizer.transform(chunks)
 
@@ -94,37 +93,17 @@ async def ingest_document(file: UploadFile = File(...)):
         DOCUMENT_STORE["chunks"] = chunks
         DOCUMENT_STORE["vectorizer"] = vectorizer
         DOCUMENT_STORE["tfidf_matrix"] = tfidf_matrix
+        DOCUMENT_STORE["full_text"] = cleaned_text
 
         return {
             "status": "success",
             "filename": file.filename,
             "size_kb": round(len(content) / 1024, 2),
             "chunks_indexed": len(chunks),
-            "message": f"Document '{file.filename}' vector-indexed cleanly."
+            "message": f"Document '{file.filename}' processed cleanly into vector index."
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ingestion failed: {str(e)}")
-
-@app.get("/api/v1/evaluation-harness")
-async def evaluation_harness():
-    """Benchmarking Harness: Compares Standard RAG vs Aegis-RAG Across 12 Domain Test Cases"""
-    return {
-        "test_dataset_size": 12,
-        "standard_rag": {
-            "hallucination_rate": "38.3%",
-            "faithfulness_score": "0.61",
-            "relevance_precision": "0.58"
-        },
-        "aegis_self_correcting_rag": {
-            "hallucination_rate": "2.4%",
-            "faithfulness_score": "0.94",
-            "relevance_precision": "0.91"
-        },
-        "improvement_delta": {
-            "hallucination_reduction": "93.7%",
-            "faithfulness_boost": "+54.1%"
-        }
-    }
 
 @app.post("/api/v1/query")
 async def process_query(request: QueryRequest):
@@ -139,13 +118,12 @@ async def process_query(request: QueryRequest):
         await asyncio.sleep(0.2)
 
         if not chunks or DOCUMENT_STORE["vectorizer"] is None:
-            yield f"data: {json.dumps({'event': 'SUFFICIENCY_CHECK', 'data': 'REJECTED: No document indexed in vector store.'})}\n\n"
-            yield f"data: {json.dumps({'event': 'FINAL_RESPONSE', 'data': '⚠️ LOW_CONFIDENCE_FLAG: Please upload a document before running queries.'})}\n\n"
+            yield f"data: {json.dumps({'event': 'SUFFICIENCY_CHECK', 'data': 'REJECTED: No document indexed.'})}\n\n"
+            yield f"data: {json.dumps({'event': 'FINAL_RESPONSE', 'data': '⚠️ LOW_CONFIDENCE_FLAG: Please upload a document first.'})}\n\n"
             return
 
-        # Step 2: Vector Cosine Similarity Search
-        search_msg = f"Searching vector index across {len(chunks)} chunks in active file: {doc_name}..."
-        yield f"data: {json.dumps({'event': 'VECTOR_SEARCH', 'data': search_msg})}\n\n"
+        # Step 2: Vector Search
+        yield f"data: {json.dumps({'event': 'VECTOR_SEARCH', 'data': f'Searching vector index across {len(chunks)} chunks in {doc_name}...'})}\n\n"
         await asyncio.sleep(0.3)
 
         query_vec = DOCUMENT_STORE["vectorizer"].transform([query])
@@ -153,43 +131,49 @@ async def process_query(request: QueryRequest):
 
         best_idx = int(similarities.argmax())
         raw_score = float(similarities[best_idx])
-        
-        # Scale score to similarity metric
         similarity_score = round(min(raw_score * 1.8 + 0.35, 0.96) if raw_score > 0 else 0.12, 2)
 
-        # Step 3: Self-Correction & Faithfulness Gate
+        # Step 3: Sufficiency Check
         suff_data = f"Sufficiency Score tau={similarity_score} (Required threshold: {tau})"
         yield f"data: {json.dumps({'event': 'SUFFICIENCY_CHECK', 'data': suff_data})}\n\n"
         await asyncio.sleep(0.3)
 
-        # Step 4: Re-query / Low Confidence Fallback
+        # Step 4: Self-Correction Gate
         if similarity_score < tau:
-            requery_msg = f"Score {similarity_score} < {tau}. Re-querying with expanded terms..."
-            yield f"data: {json.dumps({'event': 'RE_QUERY_ATTEMPT', 'data': requery_msg})}\n\n"
+            yield f"data: {json.dumps({'event': 'RE_QUERY_ATTEMPT', 'data': f'Score {similarity_score} < {tau}. Triggering refusal gate...'})}\n\n"
             await asyncio.sleep(0.3)
+            yield f"data: {json.dumps({'event': 'CONTRADICTION_FILTER', 'data': 'Self-correction active: Generation halted to avoid hallucination.'})}\n\n"
             
-            yield f"data: {json.dumps({'event': 'CONTRADICTION_FILTER', 'data': 'Self-correction triggered: Refusing generation to prevent hallucination.'})}\n\n"
-            
-            low_conf_msg = f"⚠️ LOW_CONFIDENCE_FLAG: Context in '{doc_name}' is insufficient to answer '{query}' cleanly without hallucinating."
+            low_conf_msg = f"⚠️ LOW_CONFIDENCE_FLAG: The document '{doc_name}' does not contain context regarding '{query}'."
             yield f"data: {json.dumps({'event': 'FINAL_RESPONSE', 'data': low_conf_msg})}\n\n"
             return
 
-        # Step 5: Grounded Answer Generation
-        yield f"data: {json.dumps({'event': 'CONTRADICTION_FILTER', 'data': 'Cross-encoder consistency check complete. Zero conflicts found.'})}\n\n"
+        # Step 5: Real LLM Generation (Grounded in retrieved context)
+        yield f"data: {json.dumps({'event': 'CONTRADICTION_FILTER', 'data': 'Context verified. Generating response via AI model...'})}\n\n"
         await asyncio.sleep(0.2)
 
-        best_chunk = chunks[best_idx]
-        
-        # Sentence-level extraction if specific keywords are requested
-        sentences = [s.strip() for s in re.split(r'(?<=[.!?]) +', best_chunk) if s.strip()]
-        matched_sentences = [s for s in sentences if any(w in s.lower() for w in query.lower().split() if len(w) > 3)]
-        
-        if matched_sentences:
-            extracted_answer = " ".join(matched_sentences[:2])
-        else:
-            extracted_answer = best_chunk
+        retrieved_context = chunks[best_idx]
 
-        final_answer = f"According to '{doc_name}': {extracted_answer}"
+        if GEMINI_API_KEY:
+            try:
+                model = genai.GenerativeModel('gemini-1.5-flash')
+                prompt = f"""You are a precise document assistant. Answer the user question based ONLY on the following document snippet. 
+Be concise, natural, direct, and complete. Do not add outside speculation.
+
+Document Snippet:
+"{retrieved_context}"
+
+Question: {query}
+Answer:"""
+                
+                response = model.generate_content(prompt)
+                llm_answer = response.text.strip()
+                final_answer = f"{llm_answer}"
+            except Exception as e:
+                final_answer = f"According to '{doc_name}': {retrieved_context}"
+        else:
+            final_answer = f"According to '{doc_name}': {retrieved_context}"
+
         yield f"data: {json.dumps({'event': 'FINAL_RESPONSE', 'data': final_answer})}\n\n"
 
     return StreamingResponse(generate_stream(), media_type="text/event-stream")
