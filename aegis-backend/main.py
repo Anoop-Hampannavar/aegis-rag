@@ -162,10 +162,7 @@ async def process_query(request: QueryRequest):
                     "Direct Answer:"
                 )
 
-                response = await client.aio.models.generate_content(
-                    model='gemini-1.5-flash',
-                    contents=prompt,
-                )
+                response = await client.aio.models.generate_content(model='gemini-2.5-flash',contents=prompt,)
                 
                 if response and response.text:
                     final_answer = response.text.strip()
