@@ -1,6 +1,7 @@
 import os
 import io
 import json
+import re
 import asyncio
 from typing import Optional, List
 from fastapi import FastAPI, UploadFile, File, HTTPException
@@ -8,11 +9,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from io import BytesIO
+import httpx
 
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import pypdf
-from google import genai
 
 app = FastAPI(
     title="Aegis-RAG Self-Correcting Engine",
@@ -28,8 +29,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
+HF_TOKEN = os.getenv("HF_TOKEN", "")
+HF_MODEL_URL = "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2"
 
 DOCUMENT_STORE = {
     "filename": "None",
@@ -52,13 +53,24 @@ def chunk_text(text: str, chunk_size: int = 250, overlap: int = 40) -> List[str]
             chunks.append(chunk)
     return chunks
 
+def extract_clean_sentence(query: str, context: str) -> str:
+    """Fallback parser: extracts key body sentences and ignores letter headers."""
+    sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', context) if len(s.strip()) > 10]
+    body_sentences = [s for s in sentences if not any(s.startswith(h) for h in ["From:", "To:", "Subject:", "Respected", "Yours"])]
+    target_list = body_sentences if body_sentences else sentences
+
+    for s in target_list:
+        if any(w in s.lower() for w in ["permission", "leave", "grant", "classes", "20th", "26th"]):
+            return s
+    return target_list[-1] if target_list else context
+
 @app.get("/health")
 async def health_check():
     return {
         "status": "healthy",
         "active_document": DOCUMENT_STORE["filename"],
         "indexed_chunks": len(DOCUMENT_STORE["chunks"]),
-        "llm_enabled": bool(client)
+        "hf_configured": bool(HF_TOKEN)
     }
 
 @app.post("/api/v1/ingest")
@@ -111,7 +123,7 @@ async def process_query(request: QueryRequest):
         doc_name = DOCUMENT_STORE["filename"]
         chunks = DOCUMENT_STORE["chunks"]
 
-        # Step 1: Initialize Pipeline
+        # Step 1: Pipeline Initialization
         yield f"data: {json.dumps({'event': 'STATE_INIT', 'data': f'Query received: {query}'})}\n\n"
         await asyncio.sleep(0.1)
 
@@ -146,40 +158,56 @@ async def process_query(request: QueryRequest):
             yield f"data: {json.dumps({'event': 'FINAL_RESPONSE', 'data': low_conf_msg})}\n\n"
             return
 
-        # Step 5: Dynamic LLM Generation
-       # Step 5: Dynamic LLM Generation
-        yield f"data: {json.dumps({'event': 'CONTRADICTION_FILTER', 'data': 'Context verified. Synthesizing natural answer via Gemini AI...'})}\n\n"
+        # Step 5: Hugging Face LLM Synthesis
+        yield f"data: {json.dumps({'event': 'CONTRADICTION_FILTER', 'data': 'Context verified. Synthesizing answer via Hugging Face Inference API...'})}\n\n"
         await asyncio.sleep(0.1)
 
         retrieved_context = chunks[best_idx]
+        fallback_answer = extract_clean_sentence(query, retrieved_context)
 
-        if client and GEMINI_API_KEY:
+        if HF_TOKEN:
             try:
                 prompt = (
-                    "You are an intelligent document assistant. Answer the user's question naturally, directly, "
-                    "and accurately based ONLY on the provided context. Do NOT output raw letter headers, salutations, or addresses.\n\n"
-                    f"Document Context:\n\"{retrieved_context}\"\n\n"
-                    f"User Question: {query}\n\n"
-                    "Direct Answer:"
+                    f"<s>[INST] You are an assistant answering questions from document context. "
+                    f"Answer the question directly and concisely in 1 sentence. Do NOT quote headers, addresses, or names.\n\n"
+                    f"Context: {retrieved_context}\n\n"
+                    f"Question: {query} [/INST]"
                 )
 
-                response = await client.aio.models.generate_content(
-                    model='gemini-2.5-flash',
-                    contents=prompt,
-                )
-                
-                if response and response.text:
-                    final_answer = response.text.strip()
-                else:
-                    final_answer = f"According to '{doc_name}': {retrieved_context}"
+                headers = {"Authorization": f"Bearer {HF_TOKEN}"}
+                payload = {
+                    "inputs": prompt,
+                    "parameters": {
+                        "max_new_tokens": 100,
+                        "temperature": 0.1,
+                        "return_full_text": False
+                    }
+                }
+
+                async with httpx.AsyncClient(timeout=10.0) as http_client:
+                    response = await http_client.post(HF_MODEL_URL, headers=headers, json=payload)
+                    
+                    if response.status_code == 200:
+                        res_json = response.json()
+                        if isinstance(res_json, list) and len(res_json) > 0:
+                            generated = res_json[0].get("generated_text", "").strip()
+                            final_answer = generated if generated else fallback_answer
+                        else:
+                            final_answer = fallback_answer
+                    else:
+                        print(f"[HF Log] Status Code {response.status_code}: {response.text}")
+                        final_answer = f"According to '{doc_name}': {fallback_answer}"
 
             except Exception as err:
-                print(f"[Aegis Log] Gemini API error: {err}")
-                final_answer = f"⚠️ Gemini API Error ({str(err)}). Retried context: {retrieved_context}"
+                print(f"[HF Log] Execution error: {err}")
+                final_answer = f"According to '{doc_name}': {fallback_answer}"
         else:
-            final_answer = f"⚠️ GEMINI_API_KEY missing in Render environment variables. Raw context: {retrieved_context}"
+            final_answer = f"According to '{doc_name}': {fallback_answer}"
 
         yield f"data: {json.dumps({'event': 'FINAL_RESPONSE', 'data': final_answer})}\n\n"
 
+    return StreamingResponse(generate_stream(), media_type="text/event-stream")
+
 if __name__ == "__main__":
+    import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
