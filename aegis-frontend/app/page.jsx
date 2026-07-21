@@ -11,7 +11,7 @@ export default function AegisDashboard() {
   const [uploadStatus, setUploadStatus] = useState('');
   
   // Replace this with your live Render backend URL after deploying
- const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "https://aegis-rag-td6w.onrender.com";
+ const BACKEND_URL = "https://aegis-rag-td6w.onrender.com";
 
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
