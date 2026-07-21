@@ -6,3 +6,4 @@ pypdf
 scikit-learn
 numpy
 google-genai
+httpx
