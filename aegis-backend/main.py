@@ -1,7 +1,6 @@
 import os
 import io
 import json
-import re
 import asyncio
 from typing import Optional, List
 from fastapi import FastAPI, UploadFile, File, HTTPException
@@ -13,6 +12,7 @@ from io import BytesIO
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import pypdf
+from groq import AsyncGroq
 
 app = FastAPI(
     title="Aegis-RAG Self-Correcting Engine",
@@ -28,6 +28,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+groq_client = AsyncGroq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
+
 DOCUMENT_STORE = {
     "filename": "None",
     "chunks": [],
@@ -38,9 +41,9 @@ DOCUMENT_STORE = {
 
 class QueryRequest(BaseModel):
     query: str
-    tau_threshold: Optional[float] = 0.78
+    tau_threshold: Optional[float] = 0.35  # Adjusted for short keyword queries
 
-def chunk_text(text: str, chunk_size: int = 200, overlap: int = 30) -> List[str]:
+def chunk_text(text: str, chunk_size: int = 250, overlap: int = 40) -> List[str]:
     words = text.split()
     chunks = []
     for i in range(0, len(words), chunk_size - overlap):
@@ -49,46 +52,13 @@ def chunk_text(text: str, chunk_size: int = 200, overlap: int = 30) -> List[str]
             chunks.append(chunk)
     return chunks
 
-def dynamically_extract_answer(query: str, context: str) -> str:
-    """Dynamically locates and extracts the most relevant sentence based on query keywords, stripping formal letter metadata."""
-    # Split context into clean sentences
-    sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', context) if len(s.strip()) > 8]
-    
-    # Filter out header metadata lines
-    body_sentences = [s for s in sentences if not any(s.startswith(h) for h in ["From:", "To:", "Subject:", "Respected", "Yours"])]
-    target_sentences = body_sentences if body_sentences else sentences
-
-    # Standard query terms to ignore when scoring
-    stop_words = {"what", "whats", "when", "where", "from", "this", "about", "is", "the", "asking", "date", "letter", "for", "with"}
-    q_words = [w.lower().strip("?,.") for w in query.split() if w.lower().strip("?,.") not in stop_words and len(w) > 2]
-
-    # Score sentences based on matching query intent
-    scored = []
-    for s in target_sentences:
-        s_lower = s.lower()
-        score = sum(2 if word in s_lower else 0 for word in q_words)
-        
-        # Intent boosters
-        if any(term in query.lower() for term in ["date", "when", "days"]) and any(d in s_lower for d in ["july", "august", "from", "to", "20th", "26th"]):
-            score += 5
-        if any(term in query.lower() for term in ["about", "purpose", "why"]) and any(p in s_lower for p in ["request", "inform", "internship", "permission", "hackathon"]):
-            score += 5
-            
-        scored.append((score, s))
-
-    scored.sort(key=lambda x: x[0], reverse=True)
-    
-    if scored and scored[0][0] > 0:
-        return scored[0][1]
-    
-    return target_sentences[0] if target_sentences else context
-
 @app.get("/health")
 async def health_check():
     return {
         "status": "healthy",
         "active_document": DOCUMENT_STORE["filename"],
-        "indexed_chunks": len(DOCUMENT_STORE["chunks"])
+        "indexed_chunks": len(DOCUMENT_STORE["chunks"]),
+        "groq_enabled": bool(groq_client)
     }
 
 @app.post("/api/v1/ingest")
@@ -141,7 +111,7 @@ async def process_query(request: QueryRequest):
         doc_name = DOCUMENT_STORE["filename"]
         chunks = DOCUMENT_STORE["chunks"]
 
-        # Step 1: Initialize Pipeline State
+        # Step 1: Initialize Pipeline
         yield f"data: {json.dumps({'event': 'STATE_INIT', 'data': f'Query received: {query}'})}\n\n"
         await asyncio.sleep(0.05)
 
@@ -150,7 +120,7 @@ async def process_query(request: QueryRequest):
             yield f"data: {json.dumps({'event': 'FINAL_RESPONSE', 'data': '⚠️ LOW_CONFIDENCE_FLAG: Document memory reset due to inactivity. Please re-upload your PDF.'})}\n\n"
             return
 
-        # Step 2: Vector Similarity Search
+        # Step 2: Vector Search
         yield f"data: {json.dumps({'event': 'VECTOR_SEARCH', 'data': f'Searching vector index across {len(chunks)} chunks in {doc_name}...'})}\n\n"
         await asyncio.sleep(0.1)
 
@@ -166,7 +136,7 @@ async def process_query(request: QueryRequest):
         yield f"data: {json.dumps({'event': 'SUFFICIENCY_CHECK', 'data': suff_data})}\n\n"
         await asyncio.sleep(0.1)
 
-        # Step 4: Refusal Guardrail Gate
+        # Step 4: Self-Correction Gate
         if similarity_score < tau:
             yield f"data: {json.dumps({'event': 'RE_QUERY_ATTEMPT', 'data': f'Score {similarity_score} < {tau}. Triggering refusal gate...'})}\n\n"
             await asyncio.sleep(0.1)
@@ -176,13 +146,40 @@ async def process_query(request: QueryRequest):
             yield f"data: {json.dumps({'event': 'FINAL_RESPONSE', 'data': low_conf_msg})}\n\n"
             return
 
-        # Step 5: High-Speed Synthesis
-        yield f"data: {json.dumps({'event': 'CONTRADICTION_FILTER', 'data': 'Context verified. Synthesizing precise answer...'})}\n\n"
+        # Step 5: Fully Dynamic Async Synthesis via Groq Llama-3
+        yield f"data: {json.dumps({'event': 'CONTRADICTION_FILTER', 'data': 'Context verified. Synthesizing dynamic answer via Llama-3 AI...'})}\n\n"
         await asyncio.sleep(0.05)
 
         retrieved_context = chunks[best_idx]
-        extracted_answer = dynamically_extract_answer(query, retrieved_context)
-        final_answer = f"According to '{doc_name}': {extracted_answer}"
+
+        if groq_client and GROQ_API_KEY:
+            try:
+                system_prompt = (
+                    "You are a precise, intelligent document assistant. Answer the user's question directly, concisely, "
+                    "and naturally based ONLY on the provided context. Do NOT repeat letter headers, recipient details, or addresses."
+                )
+                user_prompt = f"Context:\n\"{retrieved_context}\"\n\nQuestion: {query}\n\nDirect Answer:"
+
+                completion = await groq_client.chat.completions.create(
+                    model="llama-3.1-8b-instant",
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    temperature=0.1,
+                    max_tokens=150
+                )
+
+                if completion and completion.choices:
+                    final_answer = completion.choices[0].message.content.strip()
+                else:
+                    final_answer = f"According to '{doc_name}': {retrieved_context}"
+
+            except Exception as err:
+                print(f"[Aegis Log] Groq Execution Error: {err}")
+                final_answer = f"According to '{doc_name}': {retrieved_context}"
+        else:
+            final_answer = f"⚠️ GROQ_API_KEY is missing in Render environment variables. Raw chunk: {retrieved_context}"
 
         yield f"data: {json.dumps({'event': 'FINAL_RESPONSE', 'data': final_answer})}\n\n"
 
