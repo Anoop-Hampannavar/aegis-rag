@@ -147,7 +147,7 @@ async def process_query(request: QueryRequest):
             return
 
         # Step 5: Async LLM Generation
-        yield f"data: {json.dumps({'event': 'CONTRADICTION_FILTER', 'data': 'Context verified. Synthesizing answer via Gemini...'})}\n\n"
+        yield f"data: {json.dumps({'event': 'CONTRADICTION_FILTER', 'data': 'Context verified. Synthesizing answer via Gemini AI...'})}\n\n"
         await asyncio.sleep(0.1)
 
         retrieved_context = chunks[best_idx]
@@ -156,13 +156,13 @@ async def process_query(request: QueryRequest):
             try:
                 prompt = (
                     "You are a precise document assistant. Answer the user's question directly and concisely "
-                    "in 1-2 natural sentences based ONLY on the provided context. Do NOT repeat letter headers or addresses.\n\n"
+                    "in 1-2 natural sentences based ONLY on the provided context. Do NOT repeat letter headers or recipient details.\n\n"
                     f"Context: \"{retrieved_context}\"\n\n"
                     f"Question: {query}\n\n"
                     "Direct Answer:"
                 )
 
-                # Async API call using client.aio
+                # Calling Gemini model
                 response = await client.aio.models.generate_content(
                     model='gemini-2.5-flash',
                     contents=prompt,
@@ -174,7 +174,7 @@ async def process_query(request: QueryRequest):
                     final_answer = f"According to '{doc_name}': {retrieved_context}"
 
             except Exception as err:
-                print(f"[Aegis Error] Gemini async call failed: {err}")
+                print(f"[Aegis Error] Gemini execution failed: {err}")
                 final_answer = f"According to '{doc_name}': {retrieved_context}"
         else:
             final_answer = f"According to '{doc_name}': {retrieved_context}"
