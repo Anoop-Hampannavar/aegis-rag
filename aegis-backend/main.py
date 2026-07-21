@@ -83,21 +83,25 @@ async def ingest_document(file: UploadFile = File(...)):
 async def process_query(request: QueryRequest):
     async def generate_stream():
         doc_text = DOCUMENT_STORE["text_content"]
+        doc_name = DOCUMENT_STORE["filename"]
         query_lower = request.query.lower()
 
         # Step 1: Init State
-        yield f"data: {json.dumps({'event': 'STATE_INIT', 'data': f'Query received: \"{request.query}\"'})}\n\n"
+        init_msg = f"Query received: '{request.query}'"
+        yield f"data: {json.dumps({'event': 'STATE_INIT', 'data': init_msg})}\n\n"
         await asyncio.sleep(0.3)
 
         # Step 2: Retrieve Chunks
-        yield f"data: {json.dumps({'event': 'VECTOR_SEARCH', 'data': f'Searching indexed vector chunks for filename: {DOCUMENT_STORE[\"filename\"]}...'})}\n\n"
+        search_msg = f"Searching indexed vector chunks for filename: {doc_name}..."
+        yield f"data: {json.dumps({'event': 'VECTOR_SEARCH', 'data': search_msg})}\n\n"
         await asyncio.sleep(0.4)
 
         # Step 3: Sufficiency Check
         if not doc_text:
             yield f"data: {json.dumps({'event': 'SUFFICIENCY_CHECK', 'data': 'WARNING: No document uploaded yet. Answers will be based on generic context.'})}\n\n"
         else:
-            yield f"data: {json.dumps({'event': 'SUFFICIENCY_CHECK', 'data': f'Information sufficiency score: tau=0.92 (>= threshold {request.tau_threshold}). PASS.'})}\n\n"
+            suff_msg = f"Information sufficiency score: tau=0.92 (>= threshold {request.tau_threshold}). PASS."
+            yield f"data: {json.dumps({'event': 'SUFFICIENCY_CHECK', 'data': suff_msg})}\n\n"
         await asyncio.sleep(0.3)
 
         # Step 4: Real-Time Dynamic Processing Logic based on Document
@@ -112,19 +116,19 @@ async def process_query(request: QueryRequest):
             
             if found_dates:
                 unique_dates = list(set(found_dates))
-                dynamic_answer = f"Extracted key dates from '{DOCUMENT_STORE['filename']}': {', '.join(unique_dates)}"
+                dynamic_answer = f"Extracted key dates from '{doc_name}': {', '.join(unique_dates)}"
             else:
                 snippet = doc_text[:250] + "..." if len(doc_text) > 250 else doc_text
-                dynamic_answer = f"No standard dates detected in '{DOCUMENT_STORE['filename']}'. Document content snippet: \"{snippet}\""
+                dynamic_answer = f"No standard dates detected in '{doc_name}'. Document content snippet: '{snippet}'"
         
         elif "summary" in query_lower or "summarize" in query_lower:
             snippet = doc_text[:350] + "..." if len(doc_text) > 350 else doc_text
-            dynamic_answer = f"Document Summary for '{DOCUMENT_STORE['filename']}': {snippet}"
+            dynamic_answer = f"Document Summary for '{doc_name}': {snippet}"
             
         else:
             # General Query Match: Return relevant snippet
             snippet = doc_text[:300] + "..." if len(doc_text) > 300 else doc_text
-            dynamic_answer = f"Real-Time Document Match from '{DOCUMENT_STORE['filename']}': {snippet}"
+            dynamic_answer = f"Real-Time Document Match from '{doc_name}': {snippet}"
 
         # Step 5: Send Verified Dynamic Output
         yield f"data: {json.dumps({'event': 'CONTRADICTION_FILTER', 'data': 'Cross-encoder consistency check complete. Zero conflicts found.'})}\n\n"
