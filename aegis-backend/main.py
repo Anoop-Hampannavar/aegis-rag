@@ -1,7 +1,6 @@
 import os
 import io
 import json
-import re
 import asyncio
 from typing import Optional, List
 from fastapi import FastAPI, UploadFile, File, HTTPException
@@ -9,11 +8,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from io import BytesIO
-import httpx
 
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import pypdf
+from huggingface_hub import InferenceClient
 
 app = FastAPI(
     title="Aegis-RAG Self-Correcting Engine",
@@ -30,7 +29,7 @@ app.add_middleware(
 )
 
 HF_TOKEN = os.getenv("HF_TOKEN", "")
-HF_MODEL_URL = "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2"
+hf_client = InferenceClient(api_key=HF_TOKEN) if HF_TOKEN else None
 
 DOCUMENT_STORE = {
     "filename": "None",
@@ -53,24 +52,13 @@ def chunk_text(text: str, chunk_size: int = 250, overlap: int = 40) -> List[str]
             chunks.append(chunk)
     return chunks
 
-def extract_clean_sentence(query: str, context: str) -> str:
-    """Fallback parser: extracts key body sentences and ignores letter headers."""
-    sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', context) if len(s.strip()) > 10]
-    body_sentences = [s for s in sentences if not any(s.startswith(h) for h in ["From:", "To:", "Subject:", "Respected", "Yours"])]
-    target_list = body_sentences if body_sentences else sentences
-
-    for s in target_list:
-        if any(w in s.lower() for w in ["permission", "leave", "grant", "classes", "20th", "26th"]):
-            return s
-    return target_list[-1] if target_list else context
-
 @app.get("/health")
 async def health_check():
     return {
         "status": "healthy",
         "active_document": DOCUMENT_STORE["filename"],
         "indexed_chunks": len(DOCUMENT_STORE["chunks"]),
-        "hf_configured": bool(HF_TOKEN)
+        "hf_enabled": bool(hf_client)
     }
 
 @app.post("/api/v1/ingest")
@@ -123,7 +111,7 @@ async def process_query(request: QueryRequest):
         doc_name = DOCUMENT_STORE["filename"]
         chunks = DOCUMENT_STORE["chunks"]
 
-        # Step 1: Pipeline Initialization
+        # Step 1: Initialize Pipeline
         yield f"data: {json.dumps({'event': 'STATE_INIT', 'data': f'Query received: {query}'})}\n\n"
         await asyncio.sleep(0.1)
 
@@ -158,51 +146,45 @@ async def process_query(request: QueryRequest):
             yield f"data: {json.dumps({'event': 'FINAL_RESPONSE', 'data': low_conf_msg})}\n\n"
             return
 
-        # Step 5: Hugging Face LLM Synthesis
-        yield f"data: {json.dumps({'event': 'CONTRADICTION_FILTER', 'data': 'Context verified. Synthesizing answer via Hugging Face Inference API...'})}\n\n"
+        # Step 5: Hugging Face Dynamic Generation
+        yield f"data: {json.dumps({'event': 'CONTRADICTION_FILTER', 'data': 'Context verified. Synthesizing natural answer via Hugging Face...'})}\n\n"
         await asyncio.sleep(0.1)
 
         retrieved_context = chunks[best_idx]
-        fallback_answer = extract_clean_sentence(query, retrieved_context)
 
-        if HF_TOKEN:
+        if hf_client and HF_TOKEN:
             try:
-                prompt = (
-                    f"<s>[INST] You are an assistant answering questions from document context. "
-                    f"Answer the question directly and concisely in 1 sentence. Do NOT quote headers, addresses, or names.\n\n"
-                    f"Context: {retrieved_context}\n\n"
-                    f"Question: {query} [/INST]"
-                )
-
-                headers = {"Authorization": f"Bearer {HF_TOKEN}"}
-                payload = {
-                    "inputs": prompt,
-                    "parameters": {
-                        "max_new_tokens": 100,
-                        "temperature": 0.1,
-                        "return_full_text": False
+                messages = [
+                    {
+                        "role": "user",
+                        "content": (
+                            f"Context from document:\n\"{retrieved_context}\"\n\n"
+                            f"Question: {query}\n\n"
+                            "Answer the question directly and concisely in 1-2 natural sentences based strictly on the context. "
+                            "Do not include headers, names, or addresses."
+                        )
                     }
-                }
+                ]
 
-                async with httpx.AsyncClient(timeout=10.0) as http_client:
-                    response = await http_client.post(HF_MODEL_URL, headers=headers, json=payload)
-                    
-                    if response.status_code == 200:
-                        res_json = response.json()
-                        if isinstance(res_json, list) and len(res_json) > 0:
-                            generated = res_json[0].get("generated_text", "").strip()
-                            final_answer = generated if generated else fallback_answer
-                        else:
-                            final_answer = fallback_answer
-                    else:
-                        print(f"[HF Log] Status Code {response.status_code}: {response.text}")
-                        final_answer = f"According to '{doc_name}': {fallback_answer}"
+                # Run non-blocking execution call via HF Chat Completion
+                response = await asyncio.to_thread(
+                    hf_client.chat_completion,
+                    messages=messages,
+                    model="mistralai/Mistral-7B-Instruct-v0.2",
+                    max_tokens=150,
+                    temperature=0.1
+                )
+                
+                if response and response.choices and len(response.choices) > 0:
+                    final_answer = response.choices[0].message.content.strip()
+                else:
+                    final_answer = f"According to '{doc_name}': {retrieved_context}"
 
             except Exception as err:
-                print(f"[HF Log] Execution error: {err}")
-                final_answer = f"According to '{doc_name}': {fallback_answer}"
+                print(f"[HF Log] API Error: {err}")
+                final_answer = f"⚠️ Hugging Face API Error: {str(err)}"
         else:
-            final_answer = f"According to '{doc_name}': {fallback_answer}"
+            final_answer = f"⚠️ HF_TOKEN is missing in Render environment variables."
 
         yield f"data: {json.dumps({'event': 'FINAL_RESPONSE', 'data': final_answer})}\n\n"
 
