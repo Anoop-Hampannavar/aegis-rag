@@ -1,6 +1,7 @@
 import os
 import io
 import json
+import re
 import asyncio
 from typing import Optional, List
 from fastapi import FastAPI, UploadFile, File, HTTPException
@@ -51,6 +52,24 @@ def chunk_text(text: str, chunk_size: int = 250, overlap: int = 40) -> List[str]
         if len(chunk.strip()) > 15:
             chunks.append(chunk)
     return chunks
+
+def extract_target_sentence(query: str, context: str) -> str:
+    """Strip out headers, recipient text, and pull only relevant body sentence."""
+    sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', context) if len(s.strip()) > 10]
+    query_words = [w.lower() for w in query.split() if len(w) > 3 and w.lower() not in ['what', 'where', 'when', 'from', 'this']]
+    
+    # Exclude header lines
+    body_sentences = [s for s in sentences if not any(s.startswith(h) for h in ["From:", "To:", "Subject:", "Respected", "Yours"])]
+    
+    best_sentence = ""
+    max_score = -1
+    for s in (body_sentences if body_sentences else sentences):
+        score = sum(1 for word in query_words if word in s.lower())
+        if score > max_score:
+            max_score = score
+            best_sentence = s
+            
+    return best_sentence if best_sentence else context
 
 @app.get("/health")
 async def health_check():
@@ -146,38 +165,38 @@ async def process_query(request: QueryRequest):
             yield f"data: {json.dumps({'event': 'FINAL_RESPONSE', 'data': low_conf_msg})}\n\n"
             return
 
-        # Step 5: Async LLM Generation
-        yield f"data: {json.dumps({'event': 'CONTRADICTION_FILTER', 'data': 'Context verified. Synthesizing answer via Gemini AI...'})}\n\n"
+        # Step 5: Clean Response Generation
+        yield f"data: {json.dumps({'event': 'CONTRADICTION_FILTER', 'data': 'Context verified. Synthesizing concise answer...'})}\n\n"
         await asyncio.sleep(0.1)
 
         retrieved_context = chunks[best_idx]
+        clean_fallback = extract_target_sentence(query, retrieved_context)
 
         if client and GEMINI_API_KEY:
             try:
                 prompt = (
-                    "You are a precise document assistant. Answer the user's question directly and concisely "
-                    "in 1-2 natural sentences based ONLY on the provided context. Do NOT repeat letter headers or recipient details.\n\n"
+                    "Answer the user question concisely in 1 sentence based ONLY on the text below. "
+                    "Do NOT output headers, recipient details, or names.\n\n"
                     f"Context: \"{retrieved_context}\"\n\n"
                     f"Question: {query}\n\n"
-                    "Direct Answer:"
+                    "Answer:"
                 )
 
-                # Calling Gemini model
                 response = await client.aio.models.generate_content(
-                    model='gemini-2.5-flash',
+                    model='gemini-1.5-flash',
                     contents=prompt,
                 )
                 
                 if response and response.text:
                     final_answer = response.text.strip()
                 else:
-                    final_answer = f"According to '{doc_name}': {retrieved_context}"
+                    final_answer = f"According to '{doc_name}': {clean_fallback}"
 
             except Exception as err:
-                print(f"[Aegis Error] Gemini execution failed: {err}")
-                final_answer = f"According to '{doc_name}': {retrieved_context}"
+                print(f"[Aegis Log] Gemini error: {err}")
+                final_answer = f"According to '{doc_name}': {clean_fallback}"
         else:
-            final_answer = f"According to '{doc_name}': {retrieved_context}"
+            final_answer = f"According to '{doc_name}': {clean_fallback}"
 
         yield f"data: {json.dumps({'event': 'FINAL_RESPONSE', 'data': final_answer})}\n\n"
 
