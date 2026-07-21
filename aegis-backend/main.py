@@ -145,6 +145,7 @@ async def process_query(request: QueryRequest):
     async def generate_stream():
         query = request.query
         tau = request.tau_threshold
+        active_filename = ACTIVE_FILE["filename"]
 
         # Step 1: Initialize Pipeline
         yield f"data: {json.dumps({'event': 'STATE_INIT', 'data': f'Query received: {query}'})}\n\n"
@@ -156,7 +157,8 @@ async def process_query(request: QueryRequest):
             return
 
         # Step 2: Vector Search in ChromaDB
-        yield f"data: {json.dumps({'event': 'VECTOR_SEARCH', 'data': f'Searching ChromaDB embeddings (all-MiniLM-L6-v2) for active file: {ACTIVE_FILE[\"filename\"]}...'})}\n\n"
+        search_msg = f"Searching ChromaDB embeddings (all-MiniLM-L6-v2) for active file: {active_filename}..."
+        yield f"data: {json.dumps({'event': 'VECTOR_SEARCH', 'data': search_msg})}\n\n"
         await asyncio.sleep(0.3)
 
         query_embedding = embedder.encode([query]).tolist()
@@ -179,12 +181,15 @@ async def process_query(request: QueryRequest):
 
         # Step 4: Re-query / Low Confidence Fallback
         if similarity_score < tau:
-            yield f"data: {json.dumps({'event': 'RE_QUERY_ATTEMPT', 'data': f'Score {similarity_score} < {tau}. Re-querying with expanded terms...'})}\n\n"
+            requery_msg = f"Score {similarity_score} < {tau}. Re-querying with expanded terms..."
+            yield f"data: {json.dumps({'event': 'RE_QUERY_ATTEMPT', 'data': requery_msg})}\n\n"
             await asyncio.sleep(0.3)
             
             # Secondary check: If still below threshold
             yield f"data: {json.dumps({'event': 'CONTRADICTION_FILTER', 'data': 'Self-correction triggered: Refusing generation to prevent hallucination.'})}\n\n"
-            yield f"data: {json.dumps({'event': 'FINAL_RESPONSE', 'data': f'⚠️ LOW_CONFIDENCE_FLAG: Context in \"{ACTIVE_FILE[\"filename\"]}\" is insufficient to answer \"{query}\" cleanly without hallucinating.'})}\n\n"
+            
+            low_conf_msg = f"⚠️ LOW_CONFIDENCE_FLAG: Context in '{active_filename}' is insufficient to answer '{query}' cleanly without hallucinating."
+            yield f"data: {json.dumps({'event': 'FINAL_RESPONSE', 'data': low_conf_msg})}\n\n"
             return
 
         # Step 5: Grounded Answer Generation
@@ -192,7 +197,7 @@ async def process_query(request: QueryRequest):
         await asyncio.sleep(0.2)
 
         best_chunk = retrieved_chunks[0]
-        final_answer = f"According to '{ACTIVE_FILE['filename']}': {best_chunk}"
+        final_answer = f"According to '{active_filename}': {best_chunk}"
         yield f"data: {json.dumps({'event': 'FINAL_RESPONSE', 'data': final_answer})}\n\n"
 
     return StreamingResponse(generate_stream(), media_type="text/event-stream")
