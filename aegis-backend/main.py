@@ -147,7 +147,7 @@ async def process_query(request: QueryRequest):
             return
 
         # Step 5: Hugging Face Dynamic Generation
-        yield f"data: {json.dumps({'event': 'CONTRADICTION_FILTER', 'data': 'Context verified. Synthesizing natural answer via Hugging Face...'})}\n\n"
+        yield f"data: {json.dumps({'event': 'CONTRADICTION_FILTER', 'data': 'Context verified. Synthesizing natural answer via Llama 3.2...'})}\n\n"
         await asyncio.sleep(0.1)
 
         retrieved_context = chunks[best_idx]
@@ -160,17 +160,17 @@ async def process_query(request: QueryRequest):
                         "content": (
                             f"Context from document:\n\"{retrieved_context}\"\n\n"
                             f"Question: {query}\n\n"
-                            "Answer the question directly and concisely in 1-2 natural sentences based strictly on the context. "
-                            "Do not include headers, names, or addresses."
+                            "Answer the question directly and concisely in 1-2 natural sentences based strictly on the context provided. "
+                            "Do not include letter headers, addresses, or salutations."
                         )
                     }
                 ]
 
-                # Run non-blocking execution call via HF Chat Completion
+                # Run non-blocking execution call via HF Chat Completion (Llama-3.2-3B-Instruct)
                 response = await asyncio.to_thread(
                     hf_client.chat_completion,
                     messages=messages,
-                    model="mistralai/Mistral-7B-Instruct-v0.2",
+                    model="meta-llama/Llama-3.2-3B-Instruct",
                     max_tokens=150,
                     temperature=0.1
                 )
@@ -187,8 +187,6 @@ async def process_query(request: QueryRequest):
             final_answer = f"⚠️ HF_TOKEN is missing in Render environment variables."
 
         yield f"data: {json.dumps({'event': 'FINAL_RESPONSE', 'data': final_answer})}\n\n"
-
-    return StreamingResponse(generate_stream(), media_type="text/event-stream")
 
 if __name__ == "__main__":
     import uvicorn
