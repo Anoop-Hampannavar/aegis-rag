@@ -147,35 +147,41 @@ async def process_query(request: QueryRequest):
             return
 
         # Step 5: Real LLM Generation (Grounded in retrieved context)
-        yield f"data: {json.dumps({'event': 'CONTRADICTION_FILTER', 'data': 'Context verified. Generating response via AI model...'})}\n\n"
+       # Step 5: Real LLM Generation (Grounded in retrieved context)
+        yield f"data: {json.dumps({'event': 'CONTRADICTION_FILTER', 'data': 'Context verified. Synthesizing response via Gemini AI...'})}\n\n"
         await asyncio.sleep(0.2)
 
         retrieved_context = chunks[best_idx]
 
-        if client:
+        if client and GEMINI_API_KEY:
             try:
-                prompt = f"""You are a precise document assistant. Answer the user's question concisely based ONLY on this document context. Do not output raw headers or recipient details unless specifically requested.
+                prompt = (
+                    "You are an AI document assistant. Answer the user's question directly and concisely "
+                    "in 1-2 natural sentences based ONLY on the provided context. Do NOT repeat letter headers, "
+                    "addresses, or salutations unless explicitly requested.\n\n"
+                    f"Context: \"{retrieved_context}\"\n\n"
+                    f"Question: {query}\n\n"
+                    "Direct Answer:"
+                )
 
-Document Context:
-"{retrieved_context}"
-
-Question: {query}
-Answer:"""
-                
                 response = client.models.generate_content(
-                    model='gemini-2.5-flash',
+                    model='gemini-1.5-flash',
                     contents=prompt,
                 )
-                final_answer = response.text.strip()
-            except Exception as e:
-                print(f"Gemini API Execution Error: {str(e)}")
-                final_answer = f"According to '{doc_name}': {retrieved_context}"
+                
+                if response and response.text:
+                    final_answer = response.text.strip()
+                else:
+                    final_answer = f"According to '{doc_name}': {retrieved_context}"
+
+            except Exception as err:
+                print(f"[Aegis Error] Gemini Generation failed: {err}")
+                final_answer = f"⚠️ Gemini Execution Error ({str(err)}). Raw context: {retrieved_context}"
         else:
-            final_answer = f"According to '{doc_name}': {retrieved_context}"
+            print("[Aegis Notice] GEMINI_API_KEY is not configured in environment variables.")
+            final_answer = f"⚠️ GEMINI_API_KEY Missing in Render Environment. Raw context: {retrieved_context}"
 
         yield f"data: {json.dumps({'event': 'FINAL_RESPONSE', 'data': final_answer})}\n\n"
-
-    return StreamingResponse(generate_stream(), media_type="text/event-stream")
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
