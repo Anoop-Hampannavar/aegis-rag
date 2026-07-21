@@ -179,7 +179,17 @@ async def process_query(request: QueryRequest):
         await asyncio.sleep(0.2)
 
         best_chunk = chunks[best_idx]
-        final_answer = f"According to '{doc_name}': {best_chunk}"
+        
+        # Sentence-level extraction if specific keywords are requested
+        sentences = [s.strip() for s in re.split(r'(?<=[.!?]) +', best_chunk) if s.strip()]
+        matched_sentences = [s for s in sentences if any(w in s.lower() for w in query.lower().split() if len(w) > 3)]
+        
+        if matched_sentences:
+            extracted_answer = " ".join(matched_sentences[:2])
+        else:
+            extracted_answer = best_chunk
+
+        final_answer = f"According to '{doc_name}': {extracted_answer}"
         yield f"data: {json.dumps({'event': 'FINAL_RESPONSE', 'data': final_answer})}\n\n"
 
     return StreamingResponse(generate_stream(), media_type="text/event-stream")
