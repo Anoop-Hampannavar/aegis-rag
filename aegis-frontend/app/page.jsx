@@ -1,41 +1,35 @@
 'use client';
 
-import React, { useState } from 'react';
-import { Shield, Upload, Send, Cpu, CheckCircle, FileText, Activity } from 'lucide-react';
+import { useState, useEffect } from 'react';
 
-export default function AegisDashboard() {
-  const [query, setQuery] = useState('');
-  const [logs, setLogs] = useState([]);
-  const [response, setResponse] = useState('');
-  const [isStreaming, setIsStreaming] = useState(false);
-  const [uploadStatus, setUploadStatus] = useState('');
-  
-  // Replace this with your live Render backend URL after deploying
- const BACKEND_URL = "https://aegis-rag-td6w.onrender.com";
+const BACKEND_URL = "https://aegis-rag-td6w.onrender.com";
 
-  const handleFileUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+export default function Home() {
+  const [isBackendConnected, setIsBackendConnected] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-    setUploadStatus('Ingesting & OCR Parsing...');
-    const formData = new FormData();
-    formData.append('file', file);
-
-    try {
-      const res = await fetch(`${renderBackendUrl}/api/v1/ingest`, {
-        method: 'POST',
-        body: formData,
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setUploadStatus(`Success: Ingested ${data.filename} (${data.characters_parsed} chars)`);
-      } else {
-        setUploadStatus(`Upload failed: ${data.detail}`);
+  // Check backend connection on mount
+  useEffect(() => {
+    const checkBackend = async () => {
+      try {
+        const res = await fetch(`${BACKEND_URL}/health`);
+        if (res.ok) {
+          setIsBackendConnected(true);
+        } else {
+          setIsBackendConnected(false);
+        }
+      } catch (err) {
+        console.error("Backend fetch error:", err);
+        setIsBackendConnected(false);
+      } finally {
+        setLoading(false);
       }
-    } catch (err) {
-      setUploadStatus('Error connecting to backend instance.');
-    }
-  };
+    };
+
+    checkBackend();
+  }, []);
+
+  // ... rest of your JSX component code
 
   const handleStreamQuery = async (e) => {
     e.preventDefault();
