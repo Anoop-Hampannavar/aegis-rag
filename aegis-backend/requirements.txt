@@ -8,3 +8,4 @@ numpy
 google-genai
 httpx
 groq
+pillow
