@@ -173,10 +173,10 @@ export default function Home() {
               Upload resumes, compliance specs, or governance PDFs. Documents are sanitized and vector-indexed automatically into ChromaDB.
             </p>
 
-            {/* Ingestion Options: Live Camera & Full File Manager */}
+            {/* Ingestion Options */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               
-              {/* Option A: Direct Camera Capture (Mobile Camera Only) */}
+              {/* Option A: Direct Mobile Camera Snap */}
               <label className="border-2 border-dashed border-slate-700 hover:border-emerald-500 transition-colors rounded-lg p-4 flex flex-col items-center justify-center cursor-pointer bg-slate-950/50">
                 <Camera className="w-8 h-8 text-emerald-400 mb-1" />
                 <span className="text-xs text-slate-300 font-medium">Snap Live Doc</span>
@@ -191,14 +191,14 @@ export default function Home() {
                 />
               </label>
 
-              {/* Option B: Full File Manager / Document Storage (PDFs, Downloads, Files) */}
+              {/* Option B: System Files / PDF / Downloads (Forces System File Picker) */}
               <label className="border-2 border-dashed border-slate-700 hover:border-indigo-500 transition-colors rounded-lg p-4 flex flex-col items-center justify-center cursor-pointer bg-slate-950/50">
                 <FileText className="w-8 h-8 text-indigo-400 mb-1" />
                 <span className="text-xs text-slate-300 font-medium">Select File</span>
-                <span className="text-[10px] text-slate-500 mt-0.5">PDF, Documents, Drive</span>
+                <span className="text-[10px] text-slate-500 mt-0.5">PDF & Documents</span>
                 <input 
                   type="file" 
-                  accept="application/pdf,image/*" 
+                  accept=".pdf,application/pdf,.png,.jpg,.jpeg" 
                   className="hidden" 
                   onChange={handleFileUpload} 
                   disabled={isUploading} 
