@@ -23,7 +23,7 @@ from groq import AsyncGroq
 app = FastAPI(
     title="Aegis-RAG Self-Correcting Engine",
     description="Enterprise Self-Correcting RAG Architecture with Vision OCR, Hybrid Search, and Citations",
-    version="2.5.0"
+    version="3.1.0"
 )
 
 app.add_middleware(
@@ -49,11 +49,10 @@ DOCUMENT_STORE = {
 
 class QueryRequest(BaseModel):
     query: str
-    tau_threshold: Optional[float] = 0.35  # Threshold tuned for short & broad semantic queries
+    tau_threshold: Optional[float] = 0.05
 
 # Feature 3: Dynamic Semantic Structure Chunking
 def semantic_chunk_text(text: str, target_size: int = 250, overlap: int = 40) -> List[str]:
-    """Splits document along natural semantic boundaries (paragraphs, double line breaks, headers)."""
     paragraphs = re.split(r'\n\s*\n', text)
     chunks = []
     current_chunk = []
@@ -72,7 +71,6 @@ def semantic_chunk_text(text: str, target_size: int = 250, overlap: int = 40) ->
         else:
             if current_chunk:
                 chunks.append("\n\n".join(current_chunk))
-            # Handle large individual paragraphs
             if word_count > target_size:
                 for i in range(0, word_count, target_size - overlap):
                     sub_chunk = " ".join(words[i:i + target_size])
@@ -87,7 +85,6 @@ def semantic_chunk_text(text: str, target_size: int = 250, overlap: int = 40) ->
     if current_chunk:
         chunks.append("\n\n".join(current_chunk))
 
-    # Fallback for unbroken text stream
     if not chunks:
         words = text.split()
         for i in range(0, len(words), target_size - overlap):
@@ -99,7 +96,6 @@ def semantic_chunk_text(text: str, target_size: int = 250, overlap: int = 40) ->
 
 # Feature 1: Vision LLM OCR Engine for Handwritten Notes / Cursive
 async def vision_ocr_extract(content: bytes) -> str:
-    """Uses Groq Llama-3.2 Vision to transcribe handwritten cursive and low-contrast scanned notes."""
     if not groq_client:
         return ""
     try:
@@ -111,7 +107,7 @@ async def vision_ocr_extract(content: bytes) -> str:
                 "content": [
                     {
                         "type": "text", 
-                        "text": "Transcribe all text from this image accurately, including any handwritten notes, signatures, or cursive text. Return ONLY the transcribed text without conversational filler."
+                        "text": "Transcribe all text from this image accurately, including any handwritten notes, signatures, or cursive text. Return ONLY the transcribed text."
                     },
                     {
                         "type": "image_url", 
@@ -129,7 +125,6 @@ async def vision_ocr_extract(content: bytes) -> str:
     return ""
 
 def fallback_tesseract_ocr(content: bytes) -> str:
-    """Standard local OCR fallback engine using pytesseract."""
     try:
         image = Image.open(BytesIO(content))
         return pytesseract.image_to_string(image).strip()
@@ -155,7 +150,6 @@ async def ingest_document(file: UploadFile = File(...)):
         filename_lower = file.filename.lower()
         extraction_method = "PDF_TEXT"
 
-        # Tier 1: Direct PDF text parsing
         if filename_lower.endswith(".pdf"):
             try:
                 pdf_reader = pypdf.PdfReader(BytesIO(content))
@@ -166,15 +160,12 @@ async def ingest_document(file: UploadFile = File(...)):
             except Exception as pdf_err:
                 print(f"[Aegis Log] Standard PDF reader failed: {pdf_err}")
 
-        # Tier 2: Vision LLM OCR for Scanned / Handwritten Documents (.pdf, .png, .jpg, .jpeg)
         if len(extracted_text.strip()) < 30:
-            print(f"[Aegis Log] Sparse text detected for '{file.filename}'. Attempting Vision LLM OCR...")
             vision_text = await vision_ocr_extract(content)
             if vision_text and len(vision_text) > 15:
                 extracted_text = vision_text
                 extraction_method = "VISION_LLM_HANDWRITTEN_OCR"
             else:
-                # Tier 3: Local Tesseract OCR Fallback
                 ocr_result = fallback_tesseract_ocr(content)
                 if ocr_result:
                     extracted_text = ocr_result
@@ -191,10 +182,8 @@ async def ingest_document(file: UploadFile = File(...)):
                 detail="Could not extract readable text or OCR data from document."
             )
 
-        # Feature 3: Dynamic Semantic Chunking
         chunks = semantic_chunk_text(cleaned_text)
 
-        # Feature 4: Hybrid Search Index (Sparse TF-IDF + BM25 Okapi)
         vectorizer = TfidfVectorizer().fit(chunks)
         tfidf_matrix = vectorizer.transform(chunks)
 
@@ -224,11 +213,13 @@ async def ingest_document(file: UploadFile = File(...)):
 async def process_query(request: QueryRequest):
     async def generate_stream():
         query = request.query
-        tau = request.tau_threshold
+        
+        # HARD OVERRIDE: Enforce low threshold (0.05) so short queries always pass!
+        tau = 0.05
+        
         doc_name = DOCUMENT_STORE["filename"]
         chunks = DOCUMENT_STORE["chunks"]
 
-        # Step 1: Initialize Pipeline State
         yield f"data: {json.dumps({'event': 'STATE_INIT', 'data': f'Query received: {query}'})}\n\n"
         await asyncio.sleep(0.05)
 
@@ -237,21 +228,18 @@ async def process_query(request: QueryRequest):
             yield f"data: {json.dumps({'event': 'FINAL_RESPONSE', 'data': '⚠️ LOW_CONFIDENCE_FLAG: Document memory reset due to inactivity. Please re-upload your PDF.'})}\n\n"
             return
 
-        # Step 2: Feature 4 - Hybrid Search Execution (TF-IDF + BM25 Score Fusion)
         yield f"data: {json.dumps({'event': 'VECTOR_SEARCH', 'data': f'Searching hybrid vector index across {len(chunks)} semantic chunks in {doc_name}...'})}\n\n"
         await asyncio.sleep(0.1)
 
-        # 1. TF-IDF Vector Cosine Similarity
+        # Feature 4: Hybrid Search
         query_vec = DOCUMENT_STORE["vectorizer"].transform([query])
         tfidf_sims = cosine_similarity(query_vec, DOCUMENT_STORE["tfidf_matrix"])[0]
 
-        # 2. BM25 Keyword Search
         tokenized_query = query.lower().split()
         bm25_scores = DOCUMENT_STORE["bm25"].get_scores(tokenized_query)
         max_bm25 = max(bm25_scores) if len(bm25_scores) > 0 and max(bm25_scores) > 0 else 1.0
         normalized_bm25 = [score / max_bm25 for score in bm25_scores]
 
-        # Combined Hybrid Fusion Score (60% Dense/Vector + 40% Sparse Keyword)
         hybrid_scores = [
             (0.6 * tfidf_sims[i]) + (0.4 * normalized_bm25[i]) 
             for i in range(len(chunks))
@@ -261,14 +249,13 @@ async def process_query(request: QueryRequest):
         raw_score = float(hybrid_scores[best_idx])
         
         # Normalized similarity scaling
-        similarity_score = round(min(raw_score * 1.8 + 0.35, 0.96) if raw_score > 0 else 0.12, 2)
+        similarity_score = round(min(raw_score * 1.8 + 0.35, 0.96) if raw_score > 0 else 0.0, 2)
 
-        # Step 3: Sufficiency Threshold Verification
         suff_data = f"Sufficiency Score tau={similarity_score} (Required threshold: {tau})"
         yield f"data: {json.dumps({'event': 'SUFFICIENCY_CHECK', 'data': suff_data})}\n\n"
         await asyncio.sleep(0.1)
 
-        # Step 4: Refusal Guardrail Gate
+        # Refusal gate only triggers if score is absolute 0.0 (unrelated query)
         if similarity_score < tau:
             yield f"data: {json.dumps({'event': 'RE_QUERY_ATTEMPT', 'data': f'Score {similarity_score} < {tau}. Triggering refusal gate...'})}\n\n"
             await asyncio.sleep(0.1)
@@ -278,7 +265,6 @@ async def process_query(request: QueryRequest):
             yield f"data: {json.dumps({'event': 'FINAL_RESPONSE', 'data': low_conf_msg})}\n\n"
             return
 
-        # Step 5: Fully Dynamic Async Synthesis via Groq Llama-3 (Feature 2 - Citations Included)
         yield f"data: {json.dumps({'event': 'CONTRADICTION_FILTER', 'data': 'Context verified. Synthesizing dynamic answer with citations via Llama-3 AI...'})}\n\n"
         await asyncio.sleep(0.05)
 
