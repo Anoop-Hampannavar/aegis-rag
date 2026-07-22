@@ -133,7 +133,7 @@ export default function AegisDashboard() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-indigo-500 selection:text-white">
-      {/* Top Navigation Bar */}
+      {/* Top Glassmorphic Navigation Bar */}
       <header className="border-b border-slate-800/80 bg-slate-900/50 backdrop-blur-md sticky top-0 z-50 px-6 py-4 flex items-center justify-between">
         <div className="flex items-center space-x-3">
           <div className="p-2 rounded-xl bg-indigo-600/20 border border-indigo-500/30 text-indigo-400">
@@ -219,7 +219,7 @@ export default function AegisDashboard() {
           </div>
         </div>
 
-        {/* Right Section: Chat Interface */}
+        {/* Right Section: Glass Chat Interface */}
         <div className="flex-1 bg-slate-900/40 border border-slate-800/80 rounded-2xl backdrop-blur-sm flex flex-col h-[650px] overflow-hidden">
           
           {/* Chat Messages */}
