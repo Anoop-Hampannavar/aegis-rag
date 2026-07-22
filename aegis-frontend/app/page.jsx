@@ -2,11 +2,11 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import { 
-  Upload, FileText, Send, ShieldCheck, 
-  Cpu, Activity, RefreshCw 
+  Terminal, ShieldAlert, Cpu, Radio, Upload, 
+  Send, Database, CheckCircle, Zap, RefreshCw 
 } from "lucide-react";
 
-export default function AegisDashboard() {
+export default function AegisCommandCenter() {
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [activeDoc, setActiveDoc] = useState(null);
@@ -15,13 +15,13 @@ export default function AegisDashboard() {
   const [query, setQuery] = useState("");
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [currentSteps, setCurrentSteps] = useState([]);
+  const [telemetryLogs, setTelemetryLogs] = useState([]);
   
-  const chatEndRef = useRef(null);
+  const logsEndRef = useRef(null);
 
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, currentSteps]);
+    logsEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [telemetryLogs, messages]);
 
   const handleFileUpload = async (e) => {
     if (!e.target.files?.[0]) return;
@@ -42,6 +42,10 @@ export default function AegisDashboard() {
       if (res.ok) {
         setActiveDoc(data.filename);
         setExtractionMethod(data.extraction_method);
+        setTelemetryLogs((prev) => [
+          ...prev, 
+          `[SYS_INGEST] Document '${data.filename}' indexed cleanly via ${data.extraction_method}`
+        ]);
       } else {
         alert(data.detail || "Upload failed");
       }
@@ -56,17 +60,13 @@ export default function AegisDashboard() {
     e.preventDefault();
     if (!query.trim() || loading) return;
 
-    const userMessage = {
-      id: Date.now().toString(),
-      role: "user",
-      content: query,
-    };
-
-    setMessages((prev) => [...prev, userMessage]);
+    const userMsg = { id: Date.now().toString(), role: "user", text: query };
+    setMessages((prev) => [...prev, userMsg]);
     const currentQuery = query;
     setQuery("");
     setLoading(true);
-    setCurrentSteps([]);
+
+    setTelemetryLogs((prev) => [...prev, `[USER_QUERY] Execution launched: "${currentQuery}"`]);
 
     try {
       const response = await fetch("https://aegis-backend.onrender.com/api/v1/query", {
@@ -80,7 +80,6 @@ export default function AegisDashboard() {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let assistantText = "";
-      let stepsBuffer = [];
 
       while (true) {
         const { value, done } = await reader.read();
@@ -97,11 +96,13 @@ export default function AegisDashboard() {
               if (payload.event === "FINAL_RESPONSE") {
                 assistantText = payload.data;
               } else {
-                stepsBuffer.push({ event: payload.event, data: payload.data });
-                setCurrentSteps([...stepsBuffer]);
+                setTelemetryLogs((prev) => [
+                  ...prev, 
+                  `[${payload.event}] ${payload.data}`
+                ]);
               }
             } catch (pErr) {
-              // Ignore partial parse chunks
+              // Parse fallback
             }
           }
         }
@@ -109,22 +110,12 @@ export default function AegisDashboard() {
 
       setMessages((prev) => [
         ...prev,
-        {
-          id: (Date.now() + 1).toString(),
-          role: "assistant",
-          content: assistantText,
-          steps: stepsBuffer,
-        },
+        { id: (Date.now() + 1).toString(), role: "assistant", text: assistantText },
       ]);
-      setCurrentSteps([]);
     } catch (err) {
       setMessages((prev) => [
         ...prev,
-        {
-          id: (Date.now() + 1).toString(),
-          role: "assistant",
-          content: "⚠️ Server connection error while processing stream.",
-        },
+        { id: (Date.now() + 1).toString(), role: "assistant", text: "⚠️ SERVER_COMMUNICATION_ERROR" },
       ]);
     } finally {
       setLoading(false);
@@ -132,152 +123,140 @@ export default function AegisDashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-indigo-500 selection:text-white">
-      {/* Top Glassmorphic Navigation Bar */}
-      <header className="border-b border-slate-800/80 bg-slate-900/50 backdrop-blur-md sticky top-0 z-50 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center space-x-3">
-          <div className="p-2 rounded-xl bg-indigo-600/20 border border-indigo-500/30 text-indigo-400">
-            <ShieldCheck className="w-6 h-6" />
+    <div className="min-h-screen bg-black text-cyan-400 font-mono p-4 flex flex-col gap-4 selection:bg-cyan-500 selection:text-black">
+      
+      {/* HUD Header Bar */}
+      <header className="border-2 border-cyan-500/40 bg-cyan-950/20 rounded-lg p-4 flex flex-col md:flex-row items-center justify-between gap-4 shadow-[0_0_15px_rgba(6,182,212,0.15)]">
+        <div className="flex items-center gap-3">
+          <div className="p-2 border border-cyan-400 bg-cyan-500/10 rounded animate-pulse">
+            <Radio className="w-6 h-6 text-cyan-400" />
           </div>
           <div>
-            <h1 className="font-bold text-lg tracking-tight bg-gradient-to-r from-white via-slate-200 to-indigo-400 bg-clip-text text-transparent">
-              AEGIS-RAG
-            </h1>
-            <p className="text-xs text-slate-400">Self-Correcting Enterprise Guardrail Engine</p>
+            <h1 className="text-xl font-black tracking-widest text-cyan-300">AEGIS // COMMAND CENTER</h1>
+            <p className="text-[10px] text-cyan-600 uppercase tracking-wider">Self-Correcting RAG Architecture v3.2</p>
           </div>
         </div>
 
-        {/* Live Document Status Badge */}
-        <div className="flex items-center space-x-4">
-          <div className="hidden md:flex items-center space-x-2 bg-slate-900/80 border border-slate-800 px-3 py-1.5 rounded-lg text-xs">
-            <Activity className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
-            <span className="text-slate-400">Engine:</span>
-            <span className="text-slate-200 font-medium">Groq Llama-3.1 + Vision OCR</span>
+        {/* Live HUD Status Indicators */}
+        <div className="flex items-center gap-6 text-xs">
+          <div className="flex items-center gap-2">
+            <Cpu className="w-4 h-4 text-emerald-400" />
+            <span className="text-slate-400">CORE:</span>
+            <span className="text-emerald-400 font-bold">GROQ LLAMA-3</span>
           </div>
 
-          <label className="cursor-pointer inline-flex items-center space-x-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-4 py-2 rounded-lg transition-all duration-200 shadow-lg shadow-indigo-600/20 active:scale-95">
+          <label className="cursor-pointer border border-cyan-400/60 bg-cyan-900/30 hover:bg-cyan-500/20 text-cyan-300 px-4 py-2 rounded text-xs font-bold transition flex items-center gap-2 shadow-[0_0_10px_rgba(6,182,212,0.2)] active:scale-95">
             <Upload className="w-4 h-4" />
-            <span>{uploading ? "Ingesting..." : "Upload Document"}</span>
+            <span>{uploading ? "INGESTING..." : "LOAD DOCUMENT"}</span>
             <input type="file" accept=".pdf,.png,.jpg,.jpeg" onChange={handleFileUpload} className="hidden" />
           </label>
         </div>
       </header>
 
-      {/* Main Workspace */}
-      <main className="flex-1 max-w-6xl w-full mx-auto px-4 py-6 flex flex-col md:flex-row gap-6">
+      {/* Main Grid View */}
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4">
         
-        {/* Left Sidebar: Document Metadata & Active Pipeline State */}
-        <div className="w-full md:w-80 flex flex-col gap-4">
-          
-          {/* Active Document Card */}
-          <div className="bg-slate-900/40 border border-slate-800/80 rounded-2xl p-4 backdrop-blur-sm">
-            <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3 flex items-center space-x-2">
-              <FileText className="w-4 h-4 text-indigo-400" />
-              <span>Active Index</span>
-            </h2>
-
-            {activeDoc ? (
-              <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-3">
-                <p className="font-semibold text-sm text-slate-200 truncate">{activeDoc}</p>
-                <div className="mt-2 flex items-center justify-between text-xs">
-                  <span className="text-slate-400">OCR Pipeline:</span>
-                  <span className="px-2 py-0.5 rounded-full bg-indigo-950 text-indigo-300 font-mono text-[10px] border border-indigo-800/50">
-                    {extractionMethod || "PDF_TEXT"}
-                  </span>
-                </div>
-              </div>
-            ) : (
-              <div className="text-center py-6 border border-dashed border-slate-800 rounded-xl text-slate-500 text-xs">
-                No document loaded. Upload a PDF or scan to begin.
-              </div>
-            )}
+        {/* Top/Left Section: System Telemetry Console */}
+        <div className="lg:col-span-5 border border-cyan-500/30 bg-black/80 rounded-lg p-4 flex flex-col gap-3 shadow-inner">
+          <div className="flex items-center justify-between border-b border-cyan-500/20 pb-2">
+            <div className="flex items-center gap-2 text-xs font-bold text-cyan-300">
+              <Terminal className="w-4 h-4" />
+              <span>SYSTEM LOGS & TELEMETRY</span>
+            </div>
+            <span className="text-[10px] text-cyan-600">LIVE FEED</span>
           </div>
 
-          {/* Real-time Pipeline Execution Telemetry */}
-          <div className="bg-slate-900/40 border border-slate-800/80 rounded-2xl p-4 backdrop-blur-sm flex-1 flex flex-col">
-            <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3 flex items-center space-x-2">
-              <Cpu className="w-4 h-4 text-emerald-400" />
-              <span>Live Telemetry</span>
-            </h2>
-
-            <div className="flex-1 space-y-2 overflow-y-auto max-h-[350px] pr-1">
-              {currentSteps.length > 0 ? (
-                currentSteps.map((step, idx) => (
-                  <div key={idx} className="bg-slate-950/80 border border-slate-800/60 rounded-lg p-2.5 text-xs animate-fadeIn">
-                    <span className="font-mono text-[10px] text-indigo-400 font-bold block uppercase mb-0.5">
-                      {step.event}
-                    </span>
-                    <p className="text-slate-300 font-mono text-[11px] leading-relaxed">{step.data}</p>
-                  </div>
-                ))
-              ) : (
-                <div className="text-center py-10 text-slate-600 text-xs font-mono">
-                  Awaiting query execution...
-                </div>
-              )}
+          {/* Active Document Status Panel */}
+          <div className="border border-cyan-900 bg-cyan-950/30 rounded p-3 text-xs flex justify-between items-center">
+            <div className="flex items-center gap-2">
+              <Database className="w-4 h-4 text-cyan-400" />
+              <span className="text-slate-300 font-bold truncate max-w-[180px]">
+                {activeDoc || "NO_ACTIVE_INDEX"}
+              </span>
             </div>
+            <span className="text-[10px] bg-cyan-900/60 border border-cyan-500/30 px-2 py-0.5 rounded text-cyan-300">
+              {extractionMethod || "IDLE"}
+            </span>
+          </div>
+
+          {/* Telemetry Log Output Terminal */}
+          <div className="flex-1 bg-black border border-cyan-900 rounded p-3 overflow-y-auto max-h-[380px] space-y-1.5 text-[11px]">
+            {telemetryLogs.length === 0 ? (
+              <p className="text-cyan-800 text-center py-12">SYSTEM_IDLE // READY FOR INPUT</p>
+            ) : (
+              telemetryLogs.map((log, i) => (
+                <div key={i} className="text-cyan-400 font-mono leading-tight">
+                  <span className="text-cyan-700">&gt;</span> {log}
+                </div>
+              ))
+            )}
+            <div ref={logsEndRef} />
           </div>
         </div>
 
-        {/* Right Section: Glass Chat Interface */}
-        <div className="flex-1 bg-slate-900/40 border border-slate-800/80 rounded-2xl backdrop-blur-sm flex flex-col h-[650px] overflow-hidden">
+        {/* Right Section: Interactive Query Output Stream */}
+        <div className="lg:col-span-7 border border-cyan-500/30 bg-black/80 rounded-lg p-4 flex flex-col justify-between shadow-inner">
           
-          {/* Chat Messages */}
-          <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          <div className="flex items-center justify-between border-b border-cyan-500/20 pb-2 mb-4">
+            <div className="flex items-center gap-2 text-xs font-bold text-cyan-300">
+              <Zap className="w-4 h-4 text-amber-400" />
+              <span>AEGIS QUERY TERMINAL</span>
+            </div>
+            <span className="text-[10px] text-emerald-400 font-bold">GUARDRAIL ACTIVE</span>
+          </div>
+
+          {/* Chat / Command Stream */}
+          <div className="flex-1 overflow-y-auto space-y-4 max-h-[420px] pr-2 mb-4">
             {messages.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center text-center text-slate-500 space-y-3">
-                <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 text-slate-400">
-                  <ShieldCheck className="w-8 h-8 text-indigo-400" />
-                </div>
-                <p className="text-sm">Ask any question about your document.</p>
-                <p className="text-xs text-slate-600 max-w-sm">
-                  Out-of-context prompts automatically trigger the <code className="text-indigo-400">LOW_CONFIDENCE_FLAG</code> guardrail.
-                </p>
+              <div className="h-full flex flex-col items-center justify-center text-cyan-800 space-y-2">
+                <ShieldAlert className="w-12 h-12 text-cyan-900 animate-pulse" />
+                <p className="text-xs tracking-widest">AWAITING COMMAND ENTRY...</p>
               </div>
             ) : (
-              messages.map((msg) => (
-                <div
-                  key={msg.id}
-                  className={`flex flex-col ${msg.role === "user" ? "items-end" : "items-start"}`}
-                >
-                  <div
-                    className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
-                      msg.role === "user"
-                        ? "bg-indigo-600 text-white rounded-br-none shadow-md shadow-indigo-600/10"
-                        : msg.content.includes("⚠️ LOW_CONFIDENCE_FLAG")
-                        ? "bg-amber-950/40 border border-amber-800/50 text-amber-200 rounded-bl-none"
-                        : "bg-slate-950 border border-slate-800 text-slate-200 rounded-bl-none shadow-sm"
-                    }`}
-                  >
-                    {msg.content}
+              messages.map((m) => (
+                <div key={m.id} className={`flex flex-col ${m.role === "user" ? "items-end" : "items-start"}`}>
+                  <div className={`p-3 rounded border text-xs max-w-[90%] leading-relaxed ${
+                    m.role === "user" 
+                      ? "border-cyan-400 bg-cyan-950/40 text-cyan-200" 
+                      : m.text.includes("⚠️ LOW_CONFIDENCE_FLAG")
+                      ? "border-amber-500 bg-amber-950/40 text-amber-300"
+                      : "border-cyan-800 bg-black text-slate-200"
+                  }`}>
+                    <span className="text-[9px] uppercase block font-bold mb-1 opacity-60">
+                      [{m.role === "user" ? "OPERATOR" : "AEGIS_AI"}]
+                    </span>
+                    {m.text}
                   </div>
                 </div>
               ))
             )}
-            <div ref={chatEndRef} />
           </div>
 
-          {/* Prompt Input Footer */}
-          <form onSubmit={handleSendQuery} className="p-4 border-t border-slate-800/80 bg-slate-950/50 flex items-center gap-3">
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={activeDoc ? `Ask about '${activeDoc}'...` : "Upload a document first..."}
-              disabled={!activeDoc || loading}
-              className="flex-1 bg-slate-900 border border-slate-800 focus:border-indigo-500 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-500 outline-none transition duration-200 disabled:opacity-50"
-            />
+          {/* Terminal Input Line */}
+          <form onSubmit={handleSendQuery} className="flex gap-2">
+            <div className="flex-1 border border-cyan-500/40 bg-black rounded flex items-center px-3 gap-2 focus-within:border-cyan-400">
+              <span className="text-cyan-500 font-bold text-sm">&gt;</span>
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={activeDoc ? "Type prompt..." : "Upload document first..."}
+                disabled={!activeDoc || loading}
+                className="w-full bg-transparent outline-none text-xs text-cyan-200 placeholder-cyan-800 py-3"
+              />
+            </div>
             <button
               type="submit"
               disabled={!activeDoc || loading || !query.trim()}
-              className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-600 text-white p-3 rounded-xl transition duration-200 shadow-md shadow-indigo-600/20 active:scale-95"
+              className="border border-cyan-400 bg-cyan-500/20 hover:bg-cyan-500/40 disabled:opacity-30 text-cyan-300 px-6 rounded font-bold text-xs transition flex items-center gap-2 active:scale-95"
             >
-              {loading ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+              {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
             </button>
           </form>
+
         </div>
 
-      </main>
+      </div>
     </div>
   );
 }
