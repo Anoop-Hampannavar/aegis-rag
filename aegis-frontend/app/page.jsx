@@ -191,14 +191,14 @@ export default function Home() {
                 />
               </label>
 
-              {/* Option B: System Files / PDF / Downloads (Forces System File Picker) */}
+              {/* Option B: Strict Document/PDF File Picker (Bypasses Media Gallery) */}
               <label className="border-2 border-dashed border-slate-700 hover:border-indigo-500 transition-colors rounded-lg p-4 flex flex-col items-center justify-center cursor-pointer bg-slate-950/50">
                 <FileText className="w-8 h-8 text-indigo-400 mb-1" />
-                <span className="text-xs text-slate-300 font-medium">Select File</span>
-                <span className="text-[10px] text-slate-500 mt-0.5">PDF & Documents</span>
+                <span className="text-xs text-slate-300 font-medium">Select PDF / File</span>
+                <span className="text-[10px] text-slate-500 mt-0.5">Documents, Drive & Downloads</span>
                 <input 
                   type="file" 
-                  accept=".pdf,application/pdf,.png,.jpg,.jpeg" 
+                  accept=".pdf,application/pdf" 
                   className="hidden" 
                   onChange={handleFileUpload} 
                   disabled={isUploading} 
