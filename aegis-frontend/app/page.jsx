@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   ShieldCheck, AlertCircle, UploadCloud, Send, 
-  FileText, Activity, Database, CheckCircle2, Cpu, Sparkles
+  FileText, Activity, Database, CheckCircle2, Cpu, Camera, Sparkles
 } from 'lucide-react';
 
 const BACKEND_URL = "https://aegis-rag-td6w.onrender.com";
@@ -47,7 +47,7 @@ export default function Home() {
   };
 
   const handleFileUpload = async (e) => {
-    const selectedFile = e.target.files[0];
+    const selectedFile = e.target.files?.[0];
     if (!selectedFile) return;
 
     setFile(selectedFile);
@@ -65,7 +65,7 @@ export default function Home() {
 
       const data = await res.json();
       if (res.ok) {
-        setUploadStatus(`Success: ${data.filename} (${data.size_kb} KB) indexed cleanly.`);
+        setUploadStatus(`Success: ${data.filename || selectedFile.name} indexed cleanly.`);
       } else {
         setUploadStatus(`Error: ${data.detail || "Ingestion failed."}`);
       }
@@ -178,14 +178,39 @@ export default function Home() {
               Upload resumes, compliance specs, or governance PDFs. Documents are sanitized and vector-indexed automatically into ChromaDB.
             </p>
 
-            <label className="group border-2 border-dashed border-slate-700/80 hover:border-indigo-500/80 transition-all duration-200 rounded-xl p-6 flex flex-col items-center justify-center cursor-pointer bg-slate-950/60 active:scale-95 shadow-inner">
-              <FileText className="w-8 h-8 text-slate-400 group-hover:text-indigo-400 transition-colors mb-2" />
-              <span className="text-xs text-slate-200 font-medium">
-                {isUploading ? "Ingesting Document..." : "Click to select PDF or Image"}
-              </span>
-              <span className="text-[10px] text-slate-500 mt-1 font-mono">Tesseract OCR & PII Masking Active</span>
-              <input type="file" className="hidden" onChange={handleFileUpload} disabled={isUploading} />
-            </label>
+            {/* Action Buttons: Camera Snap + File Upload */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-2">
+              
+              {/* Option A: Snap Live Photo via Mobile Camera */}
+              <label className="group border border-emerald-500/30 hover:border-emerald-400/80 transition-all duration-200 rounded-xl p-4 flex flex-col items-center justify-center cursor-pointer bg-emerald-950/20 active:scale-95 shadow-inner">
+                <Camera className="w-6 h-6 text-emerald-400 group-hover:scale-110 transition-transform mb-1.5" />
+                <span className="text-xs text-slate-200 font-semibold">Snap Live Doc</span>
+                <span className="text-[10px] text-slate-500 mt-0.5">Use Phone Camera</span>
+                <input 
+                  type="file" 
+                  accept="image/*" 
+                  capture="environment" 
+                  className="hidden" 
+                  onChange={handleFileUpload} 
+                  disabled={isUploading} 
+                />
+              </label>
+
+              {/* Option B: Choose File / PDF */}
+              <label className="group border border-slate-700/80 hover:border-indigo-500/80 transition-all duration-200 rounded-xl p-4 flex flex-col items-center justify-center cursor-pointer bg-slate-950/60 active:scale-95 shadow-inner">
+                <FileText className="w-6 h-6 text-indigo-400 group-hover:scale-110 transition-transform mb-1.5" />
+                <span className="text-xs text-slate-200 font-semibold">Select File</span>
+                <span className="text-[10px] text-slate-500 mt-0.5">PDF or Saved Image</span>
+                <input 
+                  type="file" 
+                  accept=".pdf,.png,.jpg,.jpeg" 
+                  className="hidden" 
+                  onChange={handleFileUpload} 
+                  disabled={isUploading} 
+                />
+              </label>
+
+            </div>
 
             {uploadStatus && (
               <div className="mt-4 p-3 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-300 flex items-center gap-2 animate-fadeIn">
@@ -197,7 +222,7 @@ export default function Home() {
 
           <div className="mt-6 pt-3 border-t border-slate-800/80 flex items-center justify-between text-[11px] font-mono text-slate-500">
             <span className="flex items-center gap-1.5"><Database className="w-3.5 h-3.5 text-indigo-400" /> ChromaDB Active</span>
-            <span className="flex items-center gap-1.5"><Cpu className="w-3.5 h-3.5 text-emerald-400" /> OCR Ready</span>
+            <span className="flex items-center gap-1.5"><Cpu className="w-3.5 h-3.5 text-emerald-400" /> Vision OCR Ready</span>
           </div>
         </section>
 
