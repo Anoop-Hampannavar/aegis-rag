@@ -120,14 +120,12 @@ export default function Home() {
   const [uploadStatus, setUploadStatus] = useState("");
   const [isUploading, setIsUploading] = useState(false);
   
-  // Slide-out Drawer Sidebar state (hidden by default)
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState('uploads'); // 'uploads', 'images', 'history'
+  const [activeTab, setActiveTab] = useState('uploads');
   const [uploadHistory, setUploadHistory] = useState([]);
   const [imageGallery, setImageGallery] = useState([]);
   const [queryHistory, setQueryHistory] = useState([]);
 
-  // Query & Telemetry States
   const [query, setQuery] = useState("");
   const [activePrompt, setActivePrompt] = useState("");
   const [logs, setLogs] = useState([]);
@@ -293,7 +291,7 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans flex flex-col items-center p-4 md:p-8 relative">
+    <div className="w-full min-h-screen bg-slate-950 text-slate-100 font-sans flex flex-col items-center pt-2 pb-8 px-4 md:px-8 relative">
       
       {/* Dimmed Background Overlay when drawer is open */}
       {drawerOpen && (
@@ -303,13 +301,12 @@ export default function Home() {
         />
       )}
 
-      {/* Floating Gemini-Style Slide-out Sidebar Drawer */}
+      {/* Slide-out Drawer Sidebar */}
       <aside 
         className={`fixed top-0 left-0 h-full w-80 bg-slate-900 border-r border-slate-800 z-50 shadow-2xl transform transition-transform duration-300 ease-in-out flex flex-col ${
           drawerOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
-        {/* Drawer Header */}
         <div className="p-4 border-b border-slate-800 flex items-center justify-between">
           <div className="flex items-center space-x-2.5">
             <ShieldCheck className="w-6 h-6 text-emerald-400 shrink-0" />
@@ -323,7 +320,6 @@ export default function Home() {
           </button>
         </div>
 
-        {/* Drawer Classified Tabs */}
         <div className="flex border-b border-slate-800 p-2 gap-1 bg-slate-950/60">
           <button 
             onClick={() => setActiveTab('uploads')} 
@@ -345,10 +341,7 @@ export default function Home() {
           </button>
         </div>
 
-        {/* Drawer Content */}
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
-          
-          {/* Tab 1: Uploads */}
           {activeTab === 'uploads' && (
             <div className="space-y-3">
               <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Classified Ingestions</h4>
@@ -371,7 +364,6 @@ export default function Home() {
             </div>
           )}
 
-          {/* Tab 2: Camera Snaps */}
           {activeTab === 'images' && (
             <div className="space-y-3">
               <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">OCR Camera Snaps</h4>
@@ -390,7 +382,6 @@ export default function Home() {
             </div>
           )}
 
-          {/* Tab 3: History */}
           {activeTab === 'history' && (
             <div className="space-y-3">
               <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Prompt History</h4>
@@ -413,30 +404,28 @@ export default function Home() {
               )}
             </div>
           )}
-
         </div>
       </aside>
 
-      {/* Main Top Header Banner */}
-      <header className="w-full max-w-5xl flex items-center justify-between py-4 border-b border-slate-800 mb-8">
+      {/* Fixed Sticky Header Banner */}
+      <header className="w-full max-w-5xl sticky top-0 bg-slate-950/90 backdrop-blur-md z-30 flex items-center justify-between py-4 border-b border-slate-800 mb-6">
         <div className="flex items-center space-x-3">
-          {/* Gemini-Style Sidebar Toggle Button */}
           <button 
             onClick={() => setDrawerOpen(true)}
-            className="p-2 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 transition-colors flex items-center gap-1.5 group"
+            className="p-2 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 transition-colors flex items-center gap-1.5 group shrink-0"
             title="Open Sidebar"
           >
             <PanelLeft className="w-5 h-5 text-indigo-400 group-hover:scale-110 transition-transform" />
           </button>
 
-          <ShieldCheck className="w-8 h-8 text-emerald-400" />
+          <ShieldCheck className="w-8 h-8 text-emerald-400 shrink-0" />
           <div>
-            <h1 className="text-xl md:text-2xl font-bold tracking-wide">Aegis-RAG</h1>
+            <h1 className="text-xl md:text-2xl font-bold tracking-wide text-white leading-tight">Aegis-RAG</h1>
             <p className="text-xs text-slate-400">Enterprise Document Intelligence Engine</p>
           </div>
         </div>
 
-        <div className="flex items-center space-x-2 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-full text-xs">
+        <div className="flex items-center space-x-2 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-full text-xs shrink-0">
           {checkingStatus ? (
             <span className="text-amber-400 flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span> Connecting...
