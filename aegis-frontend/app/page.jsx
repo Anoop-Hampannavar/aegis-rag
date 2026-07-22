@@ -1,162 +1,242 @@
-"use client";
+'use client';
 
-import React, { useState } from "react";
-import { Upload, FileText, Send, ShieldCheck, Search, CheckCircle2 } from "lucide-react";
+import React, { useState, useEffect, useRef } from 'react';
+import { 
+  ShieldCheck, AlertCircle, UploadCloud, Send, 
+  FileText, Activity, Database, CheckCircle2, Cpu
+} from 'lucide-react';
+
+const BACKEND_URL = "https://aegis-rag-td6w.onrender.com";
 
 export default function Home() {
+  const [isConnected, setIsConnected] = useState(false);
+  const [checkingStatus, setCheckingStatus] = useState(true);
   const [file, setFile] = useState(null);
-  const [uploading, setUploading] = useState(false);
-  const [activeDoc, setActiveDoc] = useState(null);
+  const [uploadStatus, setUploadStatus] = useState("");
+  const [isUploading, setIsUploading] = useState(false);
   const [query, setQuery] = useState("");
-  const [response, setResponse] = useState("Your search result or analysis will appear here...");
-  const [loading, setLoading] = useState(false);
+  const [logs, setLogs] = useState([]);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const logEndRef = useRef(null);
+
+  // Check backend health on mount
+  useEffect(() => {
+    checkHealth();
+  }, []);
+
+  // Auto-scroll streaming log window
+  useEffect(() => {
+    logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [logs]);
+
+  const checkHealth = async () => {
+    setCheckingStatus(true);
+    try {
+      const res = await fetch(`${BACKEND_URL}/health`);
+      if (res.ok) {
+        setIsConnected(true);
+      } else {
+        setIsConnected(false);
+      }
+    } catch (err) {
+      console.error("Health check error:", err);
+      setIsConnected(false);
+    } finally {
+      setCheckingStatus(false);
+    }
+  };
 
   const handleFileUpload = async (e) => {
-    const selectedFile = e.target.files?.[0];
+    const selectedFile = e.target.files[0];
     if (!selectedFile) return;
+
     setFile(selectedFile);
-    setUploading(true);
+    setIsUploading(true);
+    setUploadStatus("Ingesting document into ChromaDB...");
 
     const formData = new FormData();
     formData.append("file", selectedFile);
 
     try {
-      const res = await fetch("https://aegis-backend.onrender.com/api/v1/ingest", {
+      const res = await fetch(`${BACKEND_URL}/api/v1/ingest`, {
         method: "POST",
         body: formData,
       });
 
       const data = await res.json();
       if (res.ok) {
-        setActiveDoc(data.filename || selectedFile.name);
+        setUploadStatus(`Success: ${data.filename} (${data.size_kb} KB) indexed cleanly.`);
       } else {
-        alert(data.detail || "Upload failed");
+        setUploadStatus(`Error: ${data.detail || "Ingestion failed."}`);
       }
     } catch (err) {
-      alert("Error connecting to backend server.");
+      setUploadStatus("Error uploading document to backend.");
     } finally {
-      setUploading(false);
+      setIsUploading(false);
     }
   };
 
   const handleSendQuery = async (e) => {
     e.preventDefault();
-    if (!query.trim() || loading) return;
+    if (!query.trim() || isStreaming) return;
 
-    setLoading(true);
+    setIsStreaming(true);
+    setLogs((prev) => [...prev, { event: "USER_QUERY", data: query }]);
 
     try {
-      const res = await fetch("https://aegis-backend.onrender.com/api/v1/query", {
+      const res = await fetch(`${BACKEND_URL}/api/v1/query`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: query, tau_threshold: 0.35 }),
+        body: JSON.stringify({ query, tau_threshold: 0.78 }),
       });
 
-      const data = await res.json();
-      setResponse(data.answer || data.result || "No response received from server.");
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split("\n\n");
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            try {
+              const jsonStr = line.replace("data: ", "").trim();
+              if (jsonStr) {
+                const parsed = JSON.parse(jsonStr);
+                setLogs((prev) => [...prev, parsed]);
+              }
+            } catch (e) {
+              console.error("SSE parse error", e);
+            }
+          }
+        }
+      }
     } catch (err) {
-      setResponse("⚠️ Error connecting to server.");
+      setLogs((prev) => [
+        ...prev,
+        { event: "ERROR", data: "Failed to connect to streaming engine." },
+      ]);
     } finally {
-      setLoading(false);
+      setIsStreaming(false);
+      setQuery("");
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 p-6 font-sans">
-      <div className="max-w-6xl mx-auto space-y-6">
-        
-        {/* Header */}
-        <header className="flex items-center justify-between p-4 border border-slate-800 rounded-2xl bg-slate-900/60 backdrop-blur-md">
-          <div className="flex items-center space-x-3">
-            <div className="p-2 rounded-xl bg-indigo-600/20 border border-indigo-500/30 text-indigo-400">
-              <ShieldCheck className="w-6 h-6" />
-            </div>
-            <div>
-              <h1 className="font-bold text-xl text-white">AEGIS Guardrail RAG</h1>
-              <p className="text-xs text-slate-400">Self-Correcting Document Intelligence Engine</p>
-            </div>
+    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans flex flex-col items-center p-4 md:p-8">
+      {/* Header Banner */}
+      <header className="w-full max-w-5xl flex items-center justify-between py-4 border-b border-slate-800 mb-8">
+        <div className="flex items-center space-x-3">
+          <ShieldCheck className="w-8 h-8 text-emerald-400" />
+          <div>
+            <h1 className="text-xl md:text-2xl font-bold tracking-wide">Aegis-RAG</h1>
+            <p className="text-xs text-slate-400">Enterprise Document Intelligence Engine</p>
           </div>
-        </header>
+        </div>
 
-        {/* 2 Box Layout */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          
-          {/* BOX 1: Document Upload & Status */}
-          <div className="p-6 border border-slate-800 rounded-2xl bg-slate-900/40 flex flex-col justify-between space-y-4">
-            <div>
-              <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-4 flex items-center space-x-2">
-                <FileText className="w-4 h-4 text-indigo-400" />
-                <span>Document Ingestion</span>
-              </h2>
+        {/* Live Backend Connection Status */}
+        <div className="flex items-center space-x-2 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-full text-xs">
+          {checkingStatus ? (
+            <span className="text-yellow-400 flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-yellow-400 animate-ping"></span> Connecting...
+            </span>
+          ) : isConnected ? (
+            <span className="text-emerald-400 flex items-center gap-1.5 font-medium">
+              <span className="w-2 h-2 rounded-full bg-emerald-400"></span> System Online
+            </span>
+          ) : (
+            <button onClick={checkHealth} className="text-rose-400 flex items-center gap-1.5 hover:underline">
+              <AlertCircle className="w-3.5 h-3.5" /> Retry Connection
+            </button>
+          )}
+        </div>
+      </header>
 
-              {/* Dotted Upload Box */}
-              <label className="border-2 border-dashed border-slate-700 hover:border-indigo-500 rounded-2xl p-8 flex flex-col items-center justify-center cursor-pointer bg-slate-950/50 transition duration-200 group">
-                <Upload className="w-10 h-10 text-slate-500 group-hover:text-indigo-400 transition mb-3" />
-                <p className="text-sm font-medium text-slate-300">
-                  {uploading ? "Ingesting Document..." : "Click to Upload Document"}
-                </p>
-                <p className="text-xs text-slate-500 mt-1">PDF, PNG, JPG supported</p>
-                <input 
-                  type="file" 
-                  accept=".pdf,.png,.jpg,.jpeg" 
-                  onChange={handleFileUpload} 
-                  className="hidden" 
-                />
-              </label>
+      {/* Main Grid Layout */}
+      <main className="w-full max-w-5xl grid grid-cols-1 md:grid-cols-2 gap-6">
+        
+        {/* Left Column: Upload & Ingestion */}
+        <section className="bg-slate-900 border border-slate-800 rounded-xl p-5 flex flex-col justify-between">
+          <div>
+            <div className="flex items-center space-x-2 mb-4">
+              <UploadCloud className="w-5 h-5 text-indigo-400" />
+              <h2 className="font-semibold text-slate-200">Document Ingestion</h2>
+            </div>
+            <p className="text-xs text-slate-400 mb-6">
+              Upload resumes, compliance specs, or governance PDFs. Documents are sanitized and vector-indexed automatically into ChromaDB.
+            </p>
+
+            <label className="border-2 border-dashed border-slate-700 hover:border-indigo-500 transition-colors rounded-lg p-6 flex flex-col items-center justify-center cursor-pointer bg-slate-950/50">
+              <FileText className="w-10 h-10 text-slate-500 mb-2" />
+              <span className="text-sm text-slate-300 font-medium">Click to select PDF or Image</span>
+              <span className="text-xs text-slate-500 mt-1">Tesseract OCR & PII Masking Active</span>
+              <input type="file" className="hidden" onChange={handleFileUpload} disabled={isUploading} />
+            </label>
+
+            {uploadStatus && (
+              <div className="mt-4 p-3 bg-slate-950 border border-slate-800 rounded text-xs text-slate-300 flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>{uploadStatus}</span>
+              </div>
+            )}
+          </div>
+
+          <div className="mt-8 pt-4 border-t border-slate-800 flex items-center justify-between text-xs text-slate-500">
+            <span className="flex items-center gap-1"><Database className="w-3.5 h-3.5" /> ChromaDB Active</span>
+            <span className="flex items-center gap-1"><Cpu className="w-3.5 h-3.5" /> OCR Ready</span>
+          </div>
+        </section>
+
+        {/* Right Column: Real-Time SSE Event Execution Logs */}
+        <section className="bg-slate-900 border border-slate-800 rounded-xl p-5 flex flex-col justify-between">
+          <div>
+            <div className="flex items-center space-x-2 mb-4">
+              <Activity className="w-5 h-5 text-emerald-400" />
+              <h2 className="font-semibold text-slate-200">LangGraph Pipeline Execution</h2>
             </div>
 
-            {/* Active Document Status Indicator */}
-            <div className="bg-slate-950 p-4 border border-slate-800 rounded-xl">
-              <p className="text-xs text-slate-500 mb-1">Active Index Status:</p>
-              {activeDoc ? (
-                <div className="flex items-center space-x-2 text-emerald-400 text-sm font-medium">
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span className="truncate">{activeDoc}</span>
+            {/* Stream Logs Output */}
+            <div className="bg-slate-950 border border-slate-800 rounded-lg p-4 h-64 overflow-y-auto font-mono text-xs space-y-3">
+              {logs.length === 0 ? (
+                <div className="h-full flex items-center justify-center text-slate-600">
+                  Awaiting query execution...
                 </div>
               ) : (
-                <p className="text-sm text-slate-400 italic">No document loaded yet</p>
+                logs.map((log, idx) => (
+                  <div key={idx} className="border-l-2 border-indigo-500 pl-2">
+                    <span className="text-indigo-400 font-bold uppercase">{log.event}:</span>{" "}
+                    <span className="text-slate-300">{log.data}</span>
+                  </div>
+                ))
               )}
+              <div ref={logEndRef} />
             </div>
           </div>
 
-          {/* BOX 2: Search / Query Engine */}
-          <div className="p-6 border border-slate-800 rounded-2xl bg-slate-900/40 flex flex-col justify-between space-y-4">
-            <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wider flex items-center space-x-2">
-              <Search className="w-4 h-4 text-indigo-400" />
-              <span>Context Query Engine</span>
-            </h2>
+          {/* Query Form */}
+          <form onSubmit={handleSendQuery} className="mt-4 flex gap-2">
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Type evaluation query (e.g., 'Check candidate skill match')..."
+              className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+              disabled={isStreaming}
+            />
+            <button
+              type="submit"
+              disabled={isStreaming || !query.trim()}
+              className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-xs font-medium transition-colors disabled:opacity-50 flex items-center gap-1"
+            >
+              <Send className="w-3.5 h-3.5" />
+            </button>
+          </form>
+        </section>
 
-            {/* Result Display Output Box */}
-            <div className="flex-1 min-h-[180px] bg-slate-950 p-4 rounded-xl border border-slate-800 text-sm text-slate-300 leading-relaxed font-mono overflow-y-auto">
-              {loading ? (
-                <p className="text-indigo-400 animate-pulse">Running retrieval & confidence validation...</p>
-              ) : (
-                response
-              )}
-            </div>
-
-            {/* Prompt Input Form */}
-            <form onSubmit={handleSendQuery} className="flex gap-2">
-              <input
-                type="text"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder={activeDoc ? "Ask a question..." : "Upload document first..."}
-                disabled={!activeDoc || loading}
-                className="flex-1 bg-slate-950 border border-slate-800 focus:border-indigo-500 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-500 outline-none disabled:opacity-50"
-              />
-              <button
-                type="submit"
-                disabled={!activeDoc || loading || !query.trim()}
-                className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 text-white px-5 rounded-xl transition flex items-center justify-center disabled:opacity-50"
-              >
-                <Send className="w-4 h-4" />
-              </button>
-            </form>
-          </div>
-
-        </div>
-      </div>
+      </main>
     </div>
   );
 }
