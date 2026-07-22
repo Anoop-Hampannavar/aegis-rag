@@ -156,19 +156,12 @@ export default function Home() {
   };
 
   return (
-    <div className="relative min-h-screen bg-slate-950 text-slate-100 font-sans flex flex-col items-center p-4 md:p-8 selection:bg-indigo-500 selection:text-white overflow-hidden">
+    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans flex flex-col items-center p-4 md:p-8 selection:bg-indigo-500 selection:text-white">
       
-      {/* Background Ambience: Subtle Radial Ambient Light Glows */}
-      <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-emerald-500/10 rounded-full blur-[120px] pointer-events-none -z-10 animate-pulse"></div>
-      <div className="absolute bottom-0 right-1/4 w-[600px] h-[600px] bg-indigo-500/10 rounded-full blur-[140px] pointer-events-none -z-10"></div>
-
-      {/* Grid Pattern Background Overlay */}
-      <div className="absolute inset-0 bg-[linear-gradient(to_right,#1e293b15_1px,transparent_1px),linear-gradient(to_bottom,#1e293b15_1px,transparent_1px)] bg-[size:32px_32px] pointer-events-none -z-10"></div>
-
       {/* Header Banner */}
-      <header className="w-full max-w-6xl flex flex-col sm:flex-row items-center justify-between py-5 border-b border-slate-800/80 mb-8 gap-4 backdrop-blur-md bg-slate-950/40 rounded-2xl px-6 border">
+      <header className="w-full max-w-6xl flex flex-col sm:flex-row items-center justify-between py-5 border-b border-slate-800/80 mb-8 gap-4">
         <div className="flex items-center space-x-3.5">
-          <div className="p-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl shadow-[0_0_15px_rgba(16,185,129,0.15)]">
+          <div className="p-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
             <ShieldCheck className="w-8 h-8 text-emerald-400" />
           </div>
           <div>
@@ -200,12 +193,8 @@ export default function Home() {
       {/* Main Grid Layout */}
       <main className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-12 gap-6">
         
-        {/* Left Column: Document Ingestion Controls */}
-        <section className="lg:col-span-5 bg-slate-900/60 border border-slate-800/80 rounded-2xl p-6 flex flex-col justify-between shadow-2xl backdrop-blur-xl relative overflow-hidden group">
-          
-          {/* Subtle Corner Card Accent Overlay */}
-          <div className="absolute -top-24 -left-24 w-48 h-48 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
-
+        {/* Left Column: Document Ingestion Controls (5 cols) */}
+        <section className="lg:col-span-5 bg-slate-900/80 border border-slate-800 rounded-2xl p-6 flex flex-col justify-between shadow-xl backdrop-blur-sm">
           <div>
             <div className="flex items-center space-x-2.5 mb-3">
               <UploadCloud className="w-6 h-6 text-indigo-400" />
@@ -219,8 +208,8 @@ export default function Home() {
             <div className="grid grid-cols-1 gap-4">
               
               {/* Option A: Direct Mobile Camera Snap */}
-              <label className="group relative border border-slate-700/60 hover:border-emerald-500/80 bg-slate-950/80 hover:bg-emerald-950/20 transition-all rounded-xl p-5 flex items-center space-x-4 cursor-pointer shadow-lg">
-                <div className="p-3 bg-emerald-500/10 rounded-lg text-emerald-400 group-hover:scale-105 transition-transform border border-emerald-500/20">
+              <label className="group relative border-2 border-dashed border-slate-700/80 hover:border-emerald-500/80 bg-slate-950/60 hover:bg-emerald-950/10 transition-all rounded-xl p-5 flex items-center space-x-4 cursor-pointer">
+                <div className="p-3 bg-emerald-500/10 rounded-lg text-emerald-400 group-hover:scale-105 transition-transform">
                   <Camera className="w-7 h-7" />
                 </div>
                 <div className="flex flex-col">
@@ -238,8 +227,8 @@ export default function Home() {
               </label>
 
               {/* Option B: System Files & PDF Selector */}
-              <label className="group relative border border-slate-700/60 hover:border-indigo-500/80 bg-slate-950/80 hover:bg-indigo-950/20 transition-all rounded-xl p-5 flex items-center space-x-4 cursor-pointer shadow-lg">
-                <div className="p-3 bg-indigo-500/10 rounded-lg text-indigo-400 group-hover:scale-105 transition-transform border border-indigo-500/20">
+              <label className="group relative border-2 border-dashed border-slate-700/80 hover:border-indigo-500/80 bg-slate-950/60 hover:bg-indigo-950/10 transition-all rounded-xl p-5 flex items-center space-x-4 cursor-pointer">
+                <div className="p-3 bg-indigo-500/10 rounded-lg text-indigo-400 group-hover:scale-105 transition-transform">
                   <FileText className="w-7 h-7" />
                 </div>
                 <div className="flex flex-col">
@@ -259,7 +248,7 @@ export default function Home() {
 
             {/* Upload Status Alert */}
             {uploadStatus && (
-              <div className="mt-5 p-4 bg-slate-950/90 border border-slate-800 rounded-xl text-sm text-slate-200 flex items-start gap-3 shadow-inner">
+              <div className="mt-5 p-4 bg-slate-950 border border-slate-800 rounded-xl text-sm text-slate-200 flex items-start gap-3 shadow-inner">
                 <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
                 <span className="leading-snug">{uploadStatus}</span>
               </div>
@@ -272,15 +261,12 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Right Column: Execution Logs & Answer Display */}
-        <section className="lg:col-span-7 bg-slate-900/60 border border-slate-800/80 rounded-2xl p-6 flex flex-col justify-between shadow-2xl backdrop-blur-xl relative overflow-hidden gap-6">
+        {/* Right Column: Execution Logs & Answer Display (7 cols) */}
+        <section className="lg:col-span-7 bg-slate-900/80 border border-slate-800 rounded-2xl p-6 flex flex-col justify-between shadow-xl backdrop-blur-sm gap-6">
           
-          {/* Subtle Corner Card Accent Overlay */}
-          <div className="absolute -bottom-24 -right-24 w-48 h-48 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
-
           <div className="space-y-6">
             
-            {/* Answer Display Panel */}
+            {/* Answer Display Panel (Highlights synthesized output cleanly) */}
             <div>
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center space-x-2">
@@ -294,7 +280,7 @@ export default function Home() {
                 )}
               </div>
 
-              <div className="bg-slate-950/90 border border-slate-800/90 rounded-xl p-5 min-h-[140px] text-sm text-slate-200 leading-relaxed shadow-inner backdrop-blur-md">
+              <div className="bg-slate-950/90 border border-slate-800/90 rounded-xl p-5 min-h-[140px] text-sm text-slate-200 leading-relaxed shadow-inner">
                 {finalAnswer ? (
                   <div className="prose prose-invert max-w-none text-slate-200 font-sans whitespace-pre-wrap leading-relaxed">
                     {finalAnswer}
@@ -314,7 +300,7 @@ export default function Home() {
                 <h3 className="text-sm font-semibold text-slate-200">LangGraph Execution Telemetry</h3>
               </div>
 
-              <div className="bg-slate-950/90 border border-slate-800/90 rounded-xl p-4 h-52 overflow-y-auto font-mono text-xs space-y-3 shadow-inner backdrop-blur-md">
+              <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 h-52 overflow-y-auto font-mono text-xs space-y-3 shadow-inner">
                 {logs.length === 0 ? (
                   <div className="h-full flex items-center justify-center text-slate-600 italic">
                     Awaiting query execution...
@@ -340,7 +326,7 @@ export default function Home() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Ask anything about the document (e.g. 'Summarize education details')..."
-              className="flex-1 bg-slate-950/90 border border-slate-800/90 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all shadow-inner"
+              className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all shadow-inner"
               disabled={isStreaming}
             />
             <button
