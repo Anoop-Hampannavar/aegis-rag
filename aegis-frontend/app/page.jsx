@@ -109,10 +109,10 @@ export default function Home() {
   const [uploadStatus, setUploadStatus] = useState("");
   const [isUploading, setIsUploading] = useState(false);
   
-  // Slide-out Drawer & Modals State
+  // Drawer & Modals State
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState('history'); // 'history', 'uploads', 'images'
-  const [activeModal, setActiveModal] = useState(null); // 'howItWorks', 'howToUse', null
+  const [activeTab, setActiveTab] = useState('history');
+  const [activeModal, setActiveModal] = useState(null);
   
   const [uploadHistory, setUploadHistory] = useState([]);
   const [imageGallery, setImageGallery] = useState([]);
@@ -302,13 +302,12 @@ export default function Home() {
         />
       )}
 
-      {/* Gemini-Style Floating Slide-out Drawer Sidebar */}
+      {/* Slide-out Drawer Sidebar */}
       <aside 
         className={`fixed top-0 left-0 h-full w-80 max-w-[85vw] bg-slate-900 border-r border-slate-800 z-50 shadow-2xl transform transition-transform duration-300 ease-in-out flex flex-col ${
           drawerOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
-        {/* Drawer Header */}
         <div className="p-4 border-b border-slate-800 flex items-center justify-between">
           <div className="flex items-center space-x-2">
             <ShieldCheck className="w-6 h-6 text-emerald-400 shrink-0" />
@@ -322,7 +321,6 @@ export default function Home() {
           </button>
         </div>
 
-        {/* Action: New Chat Button */}
         <div className="p-3 border-b border-slate-800/80">
           <button
             onClick={startNewChat}
@@ -332,7 +330,6 @@ export default function Home() {
           </button>
         </div>
 
-        {/* Drawer Classified Navigation Tabs */}
         <div className="flex border-b border-slate-800 p-2 gap-1 bg-slate-950/60 text-xs">
           <button 
             onClick={() => setActiveTab('history')} 
@@ -354,7 +351,6 @@ export default function Home() {
           </button>
         </div>
 
-        {/* Drawer Tab Dynamic Content */}
         <div className="flex-1 overflow-y-auto p-3 space-y-2">
           {activeTab === 'history' && (
             <div className="space-y-2">
@@ -420,7 +416,6 @@ export default function Home() {
           )}
         </div>
 
-        {/* Drawer Bottom Utility Links */}
         <div className="p-3 border-t border-slate-800 bg-slate-950 space-y-1 text-xs">
           <button 
             onClick={() => { setActiveModal('howItWorks'); setDrawerOpen(false); }}
@@ -480,12 +475,15 @@ export default function Home() {
       {/* Main Top Sticky Header Banner */}
       <header className="w-full max-w-5xl sticky top-0 bg-slate-950/90 backdrop-blur-md z-30 flex items-center justify-between py-3 border-b border-slate-800 mb-5">
         <div className="flex items-center space-x-2.5">
+          
+          {/* Solution 1: Explicit Workspace Button in Header */}
           <button 
             onClick={() => setDrawerOpen(true)}
-            className="p-2 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 transition-colors flex items-center gap-1 shrink-0"
-            title="Open Sidebar"
+            className="px-3 py-1.5 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/30 text-indigo-300 font-semibold text-xs transition-all flex items-center gap-2 group shadow-sm shrink-0 active:scale-95"
+            title="Open Workspace Drawer"
           >
-            <PanelLeft className="w-5 h-5 text-indigo-400" />
+            <PanelLeft className="w-4 h-4 text-indigo-400 group-hover:scale-110 transition-transform" />
+            <span>Workspace</span>
           </button>
 
           <ShieldCheck className="w-7 h-7 text-emerald-400 shrink-0" />
@@ -644,6 +642,17 @@ export default function Home() {
           isStreaming={isStreaming}
         />
       </div>
+
+      {/* Solution 2: Floating Quick-Access Menu Button (Bottom Left) */}
+      {!drawerOpen && (
+        <button
+          onClick={() => setDrawerOpen(true)}
+          className="fixed bottom-5 left-5 z-40 bg-indigo-600 hover:bg-indigo-500 text-white font-medium px-3.5 py-2.5 rounded-full shadow-2xl flex items-center gap-2 border border-indigo-400/30 text-xs transition-all hover:scale-105 active:scale-95"
+        >
+          <PanelLeft className="w-4 h-4" />
+          <span>Menu / History</span>
+        </button>
+      )}
 
     </div>
   );
