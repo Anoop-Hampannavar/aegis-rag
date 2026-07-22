@@ -83,7 +83,7 @@ export default function Home() {
     setIsStreaming(true);
     setLogs((prev) => [...prev, { event: "USER_QUERY", data: query }]);
 
-    // Dynamic threshold routing: Broad summary queries bypass strict keyword vector checks
+    // Dynamic threshold routing
     const isBroadQuery = /summary|summarize|about|says|overview|tell me|explain/i.test(query);
     const activeThreshold = isBroadQuery ? 0.25 : 0.78;
 
@@ -173,23 +173,36 @@ export default function Home() {
               Upload resumes, compliance specs, or governance PDFs. Documents are sanitized and vector-indexed automatically into ChromaDB.
             </p>
 
-            {/* Ingestion Options: Live Camera & File Selector */}
+            {/* Ingestion Options: Live Camera & Full File Manager */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               
-              {/* Camera Trigger for Mobile */}
+              {/* Option A: Direct Camera Capture (Mobile Camera Only) */}
               <label className="border-2 border-dashed border-slate-700 hover:border-emerald-500 transition-colors rounded-lg p-4 flex flex-col items-center justify-center cursor-pointer bg-slate-950/50">
                 <Camera className="w-8 h-8 text-emerald-400 mb-1" />
                 <span className="text-xs text-slate-300 font-medium">Snap Live Doc</span>
                 <span className="text-[10px] text-slate-500 mt-0.5">Use Phone Camera</span>
-                <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileUpload} disabled={isUploading} />
+                <input 
+                  type="file" 
+                  accept="image/*" 
+                  capture="environment" 
+                  className="hidden" 
+                  onChange={handleFileUpload} 
+                  disabled={isUploading} 
+                />
               </label>
 
-              {/* PDF & Image Upload Trigger */}
+              {/* Option B: Full File Manager / Document Storage (PDFs, Downloads, Files) */}
               <label className="border-2 border-dashed border-slate-700 hover:border-indigo-500 transition-colors rounded-lg p-4 flex flex-col items-center justify-center cursor-pointer bg-slate-950/50">
                 <FileText className="w-8 h-8 text-indigo-400 mb-1" />
                 <span className="text-xs text-slate-300 font-medium">Select File</span>
-                <span className="text-[10px] text-slate-500 mt-0.5">PDF, PNG, JPG</span>
-                <input type="file" className="hidden" onChange={handleFileUpload} disabled={isUploading} />
+                <span className="text-[10px] text-slate-500 mt-0.5">PDF, Documents, Drive</span>
+                <input 
+                  type="file" 
+                  accept="application/pdf,image/*" 
+                  className="hidden" 
+                  onChange={handleFileUpload} 
+                  disabled={isUploading} 
+                />
               </label>
 
             </div>
