@@ -101,7 +101,7 @@ export default function AegisDashboard() {
                 setCurrentSteps([...stepsBuffer]);
               }
             } catch (pErr) {
-              // Ignore partial parse chunks
+              // Ignore partial parse
             }
           }
         }
