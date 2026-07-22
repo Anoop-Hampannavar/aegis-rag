@@ -8,3 +8,4 @@ numpy
 groq
 Pillow
 pytesseract
+rank-bm25
