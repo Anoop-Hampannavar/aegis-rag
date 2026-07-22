@@ -2,40 +2,28 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import { 
-  Upload, FileText, Send, ShieldCheck, AlertTriangle, 
-  CheckCircle2, Cpu, Activity, RefreshCw 
+  Upload, FileText, Send, ShieldCheck, 
+  Cpu, Activity, RefreshCw 
 } from "lucide-react";
 
-interface PipelineStep {
-  event: string;
-  data: string;
-}
-
-interface Message {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  steps?: PipelineStep[];
-}
-
 export default function AegisDashboard() {
-  const [file, setFile] = useState<File | null>(null);
+  const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
-  const [activeDoc, setActiveDoc] = useState<string | null>(null);
-  const [extractionMethod, setExtractionMethod] = useState<string>("");
+  const [activeDoc, setActiveDoc] = useState(null);
+  const [extractionMethod, setExtractionMethod] = useState("");
   
   const [query, setQuery] = useState("");
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [currentSteps, setCurrentSteps] = useState<PipelineStep[]>([]);
+  const [currentSteps, setCurrentSteps] = useState([]);
   
-  const chatEndRef = useRef<HTMLDivElement>(null);
+  const chatEndRef = useRef(null);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, currentSteps]);
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e) => {
     if (!e.target.files?.[0]) return;
     const selectedFile = e.target.files[0];
     setFile(selectedFile);
@@ -64,11 +52,11 @@ export default function AegisDashboard() {
     }
   };
 
-  const handleSendQuery = async (e: React.FormEvent) => {
+  const handleSendQuery = async (e) => {
     e.preventDefault();
     if (!query.trim() || loading) return;
 
-    const userMessage: Message = {
+    const userMessage = {
       id: Date.now().toString(),
       role: "user",
       content: query,
@@ -92,7 +80,7 @@ export default function AegisDashboard() {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let assistantText = "";
-      let stepsBuffer: PipelineStep[] = [];
+      let stepsBuffer = [];
 
       while (true) {
         const { value, done } = await reader.read();
