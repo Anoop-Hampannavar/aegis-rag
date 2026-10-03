@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  aegis-backend:
+    build:
+      context: ./aegis-backend
+      dockerfile: Dockerfile
+    container_name: aegis_rag_backend
+    ports:
+      - "8000:8000"
+    environment:
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - RAG_TOPIC=rag-retrieval-telemetry
+    depends_on:
+      - kafka
+
+  aegis-frontend:
+    build:
+      context: ./aegis-frontend
+      dockerfile: Dockerfile
+    container_name: aegis_rag_frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    depends_on:
+      - aegis-backend
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: aegis_zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: aegis_kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
