@@ -8,8 +8,7 @@ Aegis-RAG is a production-grade, self-correcting Retrieval-Augmented Generation 
 
 ## 🚀 Live Links & Demos
 
-- **Live Web Application:** [https://aegis-rag.vercel.app](https://aegis-rag.vercel.app)
-- **Backend API Service:** [https://aegis-rag-td6w.onrender.com](https://aegis-rag-td6w.onrender.com)
+- **Live Web Application:** [[https://aegis-rag.vercel.app](https://aegis-rag.vercel.app)](https://aegis-rag-lilac.vercel.app/)
 
 ---
 
